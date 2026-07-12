@@ -1,45 +1,38 @@
-# コードレビュー報告書: 動的UI生成チャット応答（モック版）
+# コードレビュー: サイドバー定型レポートボタン
 
-> 対象: `docs/requirements.md`（FR-1〜10, AC-1〜9）／`docs/design.md`（実装設計書）と、実装済みコード一式の突合レビュー。
-> レビュー実施日: 2026-07-11
-> 本プロジェクトはGitリポジトリではないため、`git diff` の代わりに設計書の「Files affected」に列挙された各ファイルを実読して確認した（前回パイプライン実行分＝別機能のレビュー結果は本書で置き換える）。
+対象要件: [docs/requirements/sidebar-report-buttons.md](requirements/sidebar-report-buttons.md)（AC-1〜AC-8）
+対象設計: [docs/design.md](design.md)
+対象diff: `frontend/src/constants/reportButtons.ts`（新規）、`frontend/src/stores/conversationStore.ts`（`sendReportPrompt` 追加）、`frontend/src/components/Sidebar.vue`（2セクション化）
 
-## 前提確認
-
-- `docs/lessons-learned.md` の教訓（bare `vue-tsc --noEmit` は実質ノーオペレーションであり `vue-tsc -b` / `npm run build` で確認すべき）を踏まえ、本レビューでも `npx vue-tsc -b` を実行し EXIT_CODE=0 を確認した。実装ノート（`implementation-notes.md`）にも同教訓の適用（ステップ8での型ガード関数シグネチャ修正、`Record<string, unknown>` → `unknown`）が記録されており、以後の実装で同じ問題は再発していない。
+レビュー実施日: 2026-07-12
+（本書は前回パイプライン実行分＝別機能「動的UI生成チャット応答」のレビュー結果を置き換える）
 
 ## 総合判定
 
-**承認（Approve）** — コード上のcorrectness欠陥は見つからなかった。バックエンド（`UiComponent`/`TableComponent`/`BarChartComponent`/`ChatResponse`/`MockChatService`/`ChatController`とそのテスト）、フロントエンド（`types/chat.ts`/`chatApi.ts`/`conversationStore.ts`/`MessageBubble.vue`/`TableView.vue`/`BarChartView.vue`）とも設計書の記述通りに実装されており、要件（FR-1〜10）・受け入れ基準（AC-1〜9のうちコードで検証可能な範囲）・XSS/堅牢性の非機能要件を満たしている。唯一、コード外のドキュメント（`README.md`）に機能追加前の「エコー応答」の説明が残置されている点のみ、ドキュメント整合性の観点で修正を推奨する（軽微・任意）。
+**問題なし（correctness-level の指摘事項なし）。**
 
-## Correctness findings（必須修正）
+`git diff` を実読し、要件（FR-1〜FR-7, AC-1〜AC-8）・設計書（Approach, 実装詳細, CSSパターン）と突き合わせて検証したが、ロジック誤り・レイアウト崩壊・既存挙動の回帰につながる欠陥は見つからなかった。`npx vue-tsc -b` を再実行し EXIT_CODE=0 を確認済み（`lessons-learned.md` の指摘どおり `-b` モードを使用、node は `/c/nvm4w/nodejs` を PATH に追加）。
 
-**なし。** ロジックエラー・境界値の誤り・競合状態・リソースリーク・エラーパスの欠陥は見つからなかった。個別に確認した主要ポイントは以下の通り。
+## 確認した主な観点と結論
 
-- `BarChartView.vue`: `maxValue = Math.max(0, ...spec.values)` により、値が全て0または空配列でも0除算せず `widthPercent` は0にフォールバックする（設計書のRisksで指摘された0除算対策が正しく実装されている）。
-- `chatApi.ts` の `validateChatApiResponse`: `reply` の型・`components` の配列性・各要素の `type` 別必須フィールド（`table`→`columns`非空/`rows`各行長一致、`bar_chart`→`title`/`labels`非空/`values`が`labels`と同数かつ全要素`Number.isFinite`）を「全体検証（all-or-nothing）」で行っており、設計書の「メッセージ単位・全体検証」方針と一致している。不正時は`ChatResponseFormatError`をthrowし、ストア側で通信エラー（FR-8）と表示不能エラー（FR-7）を`instanceof`で正しく分岐している。
-- `MockChatService`: インスタンスフィールドを持たずステートレス。キーワード判定順序（「担当」→シナリオA、「カテゴリ」/「種別」→シナリオB、非マッチ→シナリオC）が設計書・契約文書と一致。
-- Jacksonの`@JsonTypeInfo(As.PROPERTY)`によるtype自動付与は`ChatControllerTest`の`jsonPath("$.components[0].type", is("table"))`等で実際に検証されており、レコードに`type`フィールドを持たせない設計が機能している。
-- `EchoService.java`/`EchoServiceTest.java`は削除済みで、バックエンド・フロントエンドのソースコード中に`EchoService`や旧`{"reply": string}`形式への参照は残っていない（grep で確認）。
-- `docs/chat-response-schema.md`のサンプルJSON（3シナリオ）は`ChatControllerTest`の期待値・`MockChatService`の実装値と完全に一致している（AC-8を満たす）。
-- `MessageBubble.vue`は型ガード関数（`isTableComponent`/`isBarChartComponent`）による網羅的分岐で、万一未検証データが来ても何も描画せずクラッシュしない構造になっている。`v-html`は全ファイルでの使用ゼロ（grep確認）、`BarChartView.vue`の`:style`にはレスポンス由来の文字列ではなく自前計算した`widthPercent`（number）のみを渡しており、XSS防止の非機能要件を満たしている。
-- AC-9（空白送信の拒否）: バックエンド`ChatRequest.@NotBlank`、フロント`MessageInput.vue`の`canSend`（trim後の長さ判定）とも既存のまま退行していない。
-- AC-7（会話切替後の再描画）: `ChatWindow.vue`の`messages`は`store.activeConversation?.messages`のcomputedであり、`components`を含む`Message`が保持されたまま再評価されるため、追加のキャッシュ破棄なしに再描画される構造になっている。
+1. **AC-4（既存会話が汚染されない）**: `sendReportPrompt` は `this.createConversation()`（同期）→ `await this.sendMessage(label)` の順で呼ばれる。`createConversation()` が `activeConversationId` を同期的に確定させ、`sendMessage()` 内の `activeConversation` ゲッター参照は最初の `await postChat(...)` に到達するまで同期実行されるため、間に他の処理が割り込む余地はない。したがって送信は必ず新規会話に対して行われる。設計書のコメントどおりで実装も一致している。
+2. **メッセージの会話取り違え（応答が誤った会話に着地するリスク）**: `sendMessage()` は `await` の前後を通じてローカル変数 `conversation`（クロージャで捕捉した参照）に対して `messages.push` している。応答待ち中にユーザーが別会話へ切り替えても、応答は正しく元のレポート会話に追加される（`this.activeConversation` を再参照していない）。この既存ロジックは無変更で、今回の変更でも壊れていない。
+3. **AC-6（多重送信防止）**: `Sidebar.vue` の `:disabled="store.isLoading"` のみに依存し、`handleReport`/`sendReportPrompt` 内に `isLoading` の追加ガードはない。これはテストレポートが指摘した点と一致し、設計書 Risks 節にも明記された意図的な設計判断である。実際の挙動を検証すると、`isLoading = true` の代入は `sendMessage()` 内で最初の `await` に到達する前（同期区間）に行われるため、1回のクリックイベント処理が完了する時点で既に `isLoading` は `true` になっている。ブラウザの `click` イベントはタスクごとに処理され、Vue のリアクティブな DOM 更新（`disabled` 属性への反映）はマイクロタスクとして次のタスクが処理される前にフラッシュされるため、通常のユーザー操作（連打・ダブルクリック）で `disabled` 反映前に2回目の `click` がすり抜ける実害は起きにくい。ただし、これはブラウザのイベントループの挙動に依存した保護であり、ストア側にアプリケーションレベルの明示的なガード（多重防御）が無い点は設計判断として妥当だが、将来的な変更（例: `handleReport` を async 化して await を挟む等）で容易に壊れうる脆さを内包している。**correctness-level のバグではなく、既知・許容済みの設計トレードオフとして minor 扱いとする**（新規の欠陥ではない）。
+4. **レイアウト（AC-1, AC-8）**: `.sidebar { min-height:0 }` → `.sidebar-top { flex:1; min-height:0 }` → `.conversation-list { flex:1; min-height:0; overflow-y:auto }`、`.sidebar-reports { flex-shrink:0 }` という Flexbox の入れ子構成を確認した。親側 `App.vue` の `.app-body { flex:1; min-height:0; display:flex }`（row方向、`align-items` 既定 `stretch`）により `.sidebar` の高さが `.app-body` いっぱいに伸びることも確認済みで、上部のみが内部スクロールし下部の2ボタンが常に表示され続けるという要件どおりのレイアウトが成立する構造になっている。`.conversation-list` への `flex:1; min-height:0; overflow-y:auto` の追加は設計書が明記する意図的な既存バグ修正であり、AC-7 の回帰にはならない（履歴が少ないときは見た目上の変化なし）。
+5. **AC-7（既存挙動の維持）**: `handleNewChat` / `handleSelect` の実装本体、`.new-chat-button` / `.conversation-item` 系スタイルは無変更であることを diff で確認した。
+6. **CSS カスタムプロパティの使用**: 新規追加スタイル（`.sidebar-reports`, `.report-button` 等）は `var(--border)`, `var(--bg)`, `var(--text)`, `var(--text-h)`, `var(--code-bg)` のみを使用しており、ハードコードされた色は無い。`.report-button:disabled` の配色は `MessageInput.vue` の `.send-button:disabled` と一致しており、設計書の記述と実装が合致している。
+7. **ボタン定義とラベルの一致（FR-3, FR-7）**: `REPORT_BUTTONS` の値がテンプレートの表示・`store.sendReportPrompt(label)` への送信文字列の両方にそのまま使われており、表示文言と送信文言がズレる余地は構造的にない。
+8. **タイトル20文字制限（AC-5）**: `sendMessage()` 内の `trimmed.slice(0, TITLE_MAX_LENGTH)`（無変更）に両ラベルとも20文字以内で収まるため、そのまま全文がタイトルになる。
 
-## 軽微な指摘（Stylistic/Minor — 修正は任意）
+## 型検査・ビルド確認
 
-1. **`README.md`（プロジェクトルート）に旧エコー応答の説明が残置されている**
-   - 該当箇所: `README.md:3`「バックエンドは受け取ったメッセージをそのまま返すエコー応答のモック実装です。」／`README.md:35`「エコー応答が表示されれば疎通確認は完了です。」
-   - 内容: 本機能により`EchoService`は削除され、`POST /api/chat`はもうエコー応答を返さない（要件のNon-goalsにも「従来のエコー応答の維持（本機能で廃止する）」と明記されている）。しかしREADMEはこの変更を反映しておらず、記載通りに操作した利用者は「エコー応答が表示される」ことを期待してしまい、実際の表示（要約テキスト＋表／グラフ、またはシナリオC・非マッチ時の案内文）と食い違う。
-   - 影響: 機能追加の直接的な受け入れ基準（AC-1〜9）には含まれないファイルであり、動作へのリグレッションではないためcorrectness指摘ではなくドキュメント整合性の指摘として記載する。デモや新規参加者向けの案内としては修正が望ましい。
-   - 対応案: 「エコー応答」という記述を、実際の動作（キーワードに応じた要約テキスト＋表／棒グラフ、非マッチ時は案内文）に更新する。
+- `cd frontend && npx vue-tsc -b` を実行し EXIT_CODE=0 を再確認（node は `/c/nvm4w/nodejs` を PATH に追加して実行）。
 
-2. **`TableView.vue`の`:key="column"` / `BarChartView.vue`の`:key="bar.label"`は値の重複時に衝突しうる**
-   - 該当箇所: `TableView.vue:14`（`v-for="column in spec.columns" :key="column"`）、`BarChartView.vue:24`（`v-for="bar in bars" :key="bar.label"`）
-   - 内容: 現状の固定モックデータ（担当者名・カテゴリ名はいずれも一意）では問題は顕在化しないが、将来LLMが同名の列見出しや同名ラベルを含む応答を返した場合、Vueの`key`が重複しレンダリングの不整合（DOM再利用の誤り等）が起きうる。クラッシュには至らない軽微な表示上のリスクであり、現行のNon-goals（実LLM未接続）の範囲では実害はない。
-   - 対応案（任意）: `column`の代わりにインデックスを、`bar.label`の代わりに`index`を`key`に使う（`TableView.vue`のセル側は既に`cellIndex`をkeyにしており一貫性の観点でも統一が望ましい）。
+## 指摘事項
 
-## 検証環境の確認事実
+### Correctness-level
+なし。
 
-- `frontend`で`npx vue-tsc -b`を再実行し EXIT_CODE=0 を本レビューでも確認済み。
-- バックエンドのMaven実行はレビュー環境（Git Bash、PowerShellがPATH外）の制約で再実行できなかったが、`ChatControllerTest`/`MockChatServiceTest`のテストコードを実読し、アサーション内容が`MockChatService`の実装値・`docs/chat-response-schema.md`のサンプルと矛盾しないことを確認した（`test-report.md`記載の9/9 green の実行結果とも整合）。
+### Minor / 参考情報（対応不要、将来の申し送り事項）
+- `sendReportPrompt` / `handleReport` は多重送信防止をストア内部のフラグチェックではなく `:disabled` 属性のみに依存している（テストレポートで既出、設計書で明示的に許容された判断）。ブラウザのネイティブ挙動に守られており通常操作では問題にならないが、将来 `handleReport` を async 化するなど呼び出し経路が変わった場合に静かに崩れる可能性があるため、変更時は本トレードオフを意識すること。
+- レポートボタン押下は常に新規会話を作成する仕様（Q2 決定どおり）のため、直前に空の「New Chat」会話を作ってから未入力のままレポートボタンを押すと、空のまま使われない会話が履歴に残る。これは本改修固有の問題ではなく、既存の `New Chat` ボタン単体でも起こりうる既存挙動であり、要件のスコープ外。

@@ -1,142 +1,128 @@
-# テストレポート: 動的UI生成チャット応答（モック版）
+# テスト検証レポート: サイドバー定型レポートボタン
 
-> 本書は今回の機能（動的UI生成チャット応答・モック版、`docs/requirements.md` AC-1〜AC-9）に対する検証結果である。前回パイプライン実行分（別機能: ChatGPT風UI試作アプリ）の `docs/test-report.md` の内容を置き換える。
+対象要件: [docs/requirements/sidebar-report-buttons.md](requirements/sidebar-report-buttons.md)（AC-1〜AC-8）
+対象実装: `frontend/src/constants/reportButtons.ts`（新規）、`frontend/src/stores/conversationStore.ts`（`sendReportPrompt` 追加）、`frontend/src/components/Sidebar.vue`（2セクション化）
+
+> 本書は今回の機能（サイドバー定型レポートボタン）に対する検証結果である。前回パイプライン実行分（別機能: 動的UI生成チャット応答）の内容を置き換える。
 >
-> 検証実施日: 2026-07-11
+> 検証実施日: 2026-07-12
 
-## 検証方法の分類
+## 前提確認
 
-- **自動テスト**: 実際にコマンドを実行し、出力を確認した（バックエンドJUnit、フロントエンド `vue-tsc -b` / `vite build`、grep）
-- **実機統合確認**: バックエンドを実際に起動し、`curl` で3シナリオ＋空白メッセージを送信して生JSONを確認した
-- **コードレビューによる机上確認＋要手動確認**: ブラウザ操作が必要なACについて、実装コードを読み実装の妥当性を確認したが、ブラウザでの実描画確認はテスト担当（本エージェント）では実施不可能なため未実施。手動確認チェックリストを本書末尾に記載
+- `frontend/package.json` の `scripts` に `test` 系コマンドはなく、`vitest` / `jest` 等のテストランナーは devDependencies に存在しない。既存 `*.test.*` / `*.spec.*` ファイルも0件（`find` で確認）。→ 新規テストランナー導入はスコープ外（設計書 Test strategy 節の方針どおり）とし、以下の方針で検証した。
+  1. `npx vue-tsc -b` / `npm run build` による型検査・ビルド確認（`docs/lessons-learned.md` の指摘どおり、bare `vue-tsc --noEmit` は使用していない）
+  2. 実装コードの全文読み合わせによる静的検証（AC-1〜AC-8全項目）
+  3. **AC-4（既存会話が汚染されず新規会話にのみ送信される）と `sendReportPrompt` フローについては、テストランナーを新規導入せずに、リポジトリに既存の `esbuild`（vite の依存として既に `node_modules` に存在）で `conversationStore.ts` を実行時にトランスパイルし、実 Pinia ストア・実ストアコードに対して `fetch` のみモックして動作させる Node スクリプトを作成・実行し、実コードの挙動を実測した**（スクリプトはリポジトリ外のスクラッチパスに置き、リポジトリには追加していない）。
 
-## 1. コマンド実行ログ
-
-### 1-1. バックエンド自動テスト
-
-```
-cd backend
-./mvnw.cmd test
-```
-
-結果:
-```
-[INFO] Running com.example.chatbackend.ChatBackendApplicationTests
-[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0 -- in com.example.chatbackend.ChatBackendApplicationTests
-[INFO] Running com.example.chatbackend.ChatControllerTest
-[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0 -- in com.example.chatbackend.ChatControllerTest
-[INFO] Running com.example.chatbackend.MockChatServiceTest
-[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0 -- in com.example.chatbackend.MockChatServiceTest
-[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
-[INFO] BUILD SUCCESS
-```
-
-既存テスト内容のレビュー（コードを実読して確認）:
-- `ChatControllerTest.chatReturnsAssigneeScenarioForAssigneeKeyword` — 「今月の問い合わせ件数を担当者別にまとめて」で200、`components[0].type=="table"`・`columns`・`rows[0]`、`components[1].type=="bar_chart"`・`title`・`labels`・`values[0]` まで `jsonPath` で値検証している。**AC-4・AC-1関連データの実在確認として十分**
-- `ChatControllerTest.chatReturnsCategoryScenarioForCategoryKeyword` — カテゴリキーワードで担当者シナリオとは異なる `reply`／`columns`／`rows`／`title`／`values` を検証。**AC-2のバックエンド側データ差異を担保**
-- `ChatControllerTest.chatReturnsGuidanceTextWithoutComponentsForNonMatchingMessage` — 「こんにちは」で `components` が空配列（`empty()`）、`reply` に「エコー」を含まない（`not(containsString("エコー"))`）ことを検証。**AC-3の自動テスト部分を過不足なく満たす**
-- `ChatControllerTest.chatReturnsBadRequestForBlankMessage` — 空白のみメッセージで400。**AC-9のバックエンド側を担保**
-- `MockChatServiceTest` — サービス単体でも同様の3+1パターン（担当者／カテゴリ／種別キーワード／非マッチ）を検証しており、コントローラー層とサービス層の二重の担保がある
-
-上記は要件が求める「担当者→table+bar_chart」「カテゴリ→別データ」「非マッチ→components空・エコーなし」「空白→400」を全て実データ値まで検証しており、**追加・強化の必要はないと判断した**（テストコードの変更・追加は行っていない）。
-
-### 1-2. フロントエンド静的検証
+## Commands run
 
 ```
-cd frontend
-npm run build
+# 型検査・ビルド
+cd frontend && npx vue-tsc -b
+cd frontend && npm run build
+
+# 既存テスト有無の確認
+cd frontend && find . -iname "*.test.*" -o -iname "*.spec.*"   # node_modules除外、0件
+grep -i "vitest|jest|test" frontend/package.json                # マッチなし
+
+# 実ストアコードに対する動的検証（esbuildでconversationStore.tsをその場でトランスパイルし、実Pinia+モックfetchで実行）
+node <scratchpad>/store-check.cjs       # AC-4本体・sendReportPromptフロー・タイトル・キーワード一致
+node <scratchpad>/store-check-ac6.cjs   # ストア自体に多重送信ガードが無いことの実測（AC-6の担保根拠の確認）
 ```
 
-結果:
-```
-> vue-tsc -b && vite build
-✓ 40 modules transformed.
-dist/index.html                 0.46 kB
-dist/assets/index-BgbAkIDF.css   7.69 kB
-dist/assets/index-CMdyGd-r.js   74.07 kB
-✓ built in 625ms
-```
-Exit code 0（グリーン）。`docs/lessons-learned.md` の指示通り、bare `vue-tsc --noEmit` ではなく `npm run build`（内部で `vue-tsc -b`）を使用した。
+## Result
 
-```
-grep -r "v-html" frontend/src
-```
-結果: 0件（マッチなし）。XSS防止の非機能要件（応答文字列をHTMLとして解釈しない）をコード上で確認した。
+| 項目 | 結果 |
+|---|---|
+| `npx vue-tsc -b`（frontend） | PASS（EXIT_CODE=0、エラー0件） |
+| `npm run build`（frontend） | PASS（`vite v7.3.6`、`41 modules transformed`、`dist/` 生成、`built in 638ms`） |
+| ストア動的検証（store-check.cjs） | PASS（全アサーション成功。詳細は下記） |
+| ストア動的検証（store-check-ac6.cjs） | 実測完了（バグではなく設計どおりの挙動を確認。詳細は AC-6 の項参照） |
+| 既存テストスイート | 該当なし（フロントエンドにテストランナー未導入。バックエンドは本改修で無変更のため再実行不要と判断） |
 
-フロントエンドには自動テストフレームワーク（vitest等）が導入されておらず、`package.json` にもテストスクリプトは存在しない。既存方針（「動くプロトタイプ優先」）と整合するため、本フェーズで新規にテストフレームワークを導入することはせず、既存の検証手段（型チェック・ビルド・grep）の範囲で実施した。
+失敗（コード上の不具合）は**検出されなかった**。全体として実装は要件・設計と整合している。ただし AC-1, 2, 3, 5, 6, 7, 8 は要件書自身が「検証方法: 手動確認」と明記しており、本レポートでは**コードレビューによる静的検証**にとどまる（ブラウザでの実機確認は未実施）。
 
-### 1-3. 実機統合確認（バックエンド起動＋curl）
+## 動的検証の詳細（AC-4 / sendReportPromptフロー）
 
+`conversationStore.ts` の実コードを `esbuild.transformSync`（TS→CJS）でその場でトランスパイルし、実 `pinia`（`createPinia`/`setActivePinia`）上でストアを生成、`global.fetch` のみを `MockChatService.java` のキーワード判定ロジックを模したモックに差し替えて実行した（`postChat` 以降の実装・`sendMessage`/`sendReportPrompt`/`createMessage` は全て本物のコード）。
+
+シナリオと結果:
+1. 会話Aを作成し「こんにちは」を送信 → 会話Aに user+assistant の2メッセージ（想定どおり）
+2. `sendReportPrompt('当月担当者別問い合わせ')` を実行
+   - 会話数が1件増加（新規会話が作成された）
+   - `activeConversationId` が会話Aとは異なるIDに変わった
+   - **会話Aのメッセージ数は2件のまま変化なし**（AC-4の中核: 既存会話が汚染されない）
+   - 新規会話には user メッセージ（`content === '当月担当者別問い合わせ'`）→ assistant メッセージの2件が追加
+   - 新規会話の `title === '当月担当者別問い合わせ'`（20文字以内のためトリムなし全文一致、FR-5想定どおり）
+   - `fetch` に渡された送信文字列がラベルと完全一致（FR-3の「同一の文字列」要件を確認）
+   - 応答文言に「担当者別」を含み、`components` が2件（table/bar_chart相当）返る（「担当」キーワードにマッチしたシナリオが選ばれたことを確認）
+3. `sendReportPrompt('当月カテゴリ別問い合わせ')` も同様に新規会話が作成され、タイトルがラベル一致、応答が「カテゴリ別」シナリオになることを確認
+4. `sendReportPrompt` 実行中（`fetch` 待機中）に `store.isLoading === true` であること、完了後に `false` に戻ることを確認（FR-6の前提となる `isLoading` 制御自体は正しく機能）
+
+実行結果（抜粋）:
 ```
-cd backend
-./mvnw.cmd spring-boot:run   # バックグラウンド起動、ポート8080でLISTENを確認後に実施
-```
-
-3シナリオ＋空白メッセージの実レスポンス（UTF-8のファイル経由でPOST。日本語を直接シェル引数に渡すと文字化けし400になる問題があったため、JSONファイルを作成し `curl --data-binary @file` で送信）:
-
-**シナリオA（担当者系キーワード「今月の問い合わせ件数を担当者別にまとめて」）**
-```json
-{"reply":"今月の担当者別の問い合わせ件数をまとめました。","components":[{"type":"table","columns":["担当者","件数"],"rows":[["佐藤","12"],["鈴木","9"],["田中","7"],["高橋","5"]]},{"type":"bar_chart","title":"担当者別 問い合わせ件数","labels":["佐藤","鈴木","田中","高橋"],"values":[12.0,9.0,7.0,5.0]}]}
-```
-`docs/chat-response-schema.md` のシナリオA サンプルと**フィールド・値ともに完全一致**。
-
-**シナリオB（カテゴリ系キーワード「カテゴリ別の問い合わせ件数を見せて」）**
-```json
-{"reply":"カテゴリ別の問い合わせ件数をまとめました。","components":[{"type":"table","columns":["カテゴリ","件数"],"rows":[["請求","15"],["技術","11"],["アカウント","6"],["その他","4"]]},{"type":"bar_chart","title":"カテゴリ別 問い合わせ件数","labels":["請求","技術","アカウント","その他"],"values":[15.0,11.0,6.0,4.0]}]}
-```
-`docs/chat-response-schema.md` のシナリオB サンプルと**完全一致**。
-
-**シナリオC（非マッチ「こんにちは」）**
-```json
-{"reply":"『今月の問い合わせ件数を担当者別にまとめて』のように聞いてください。表やグラフでお答えします。","components":[]}
-```
-`docs/chat-response-schema.md` のシナリオC サンプルと**完全一致**。「エコー」を含まない。
-
-**空白メッセージ（`{"message":"   "}`）**
-```
-HTTP_STATUS:400
+PASS: all store-level assertions succeeded
+Total conversations created: 4
+fetchCalls: ["こんにちは","当月担当者別問い合わせ","当月カテゴリ別問い合わせ","当月担当者別問い合わせ"]
 ```
 
-確認後、バックエンドプロセス（`spring-boot:run` およびその子javaプロセス）を明示的に停止し（`Stop-Process -Force`）、ポート8080への接続不可（`HTTP_STATUS:000`）を確認した。停止漏れなし。
+失敗したアサーションは0件。
 
-## 2. 受け入れ基準（AC）別結果
+## AC-6 の追加実測（ストア自体の多重送信ガードの有無）
 
-| AC | 内容(要約) | 検証方法(要件書指定) | 実施した検証 | 結果 |
-|---|---|---|---|---|
-| AC-1 | 担当者別キーワードで要約テキスト＋表＋棒グラフが1吹き出しに表示 | 手動確認 | バックエンド応答データの実在は実機curl・自動テストで確認済み。フロント描画側は `MessageBubble.vue`／`TableView.vue`／`BarChartView.vue` のコードレビューで、`message.components` を順にv-forし `table`→TableView、`bar_chart`→BarChartViewを同一吹き出し内に描画するロジックを確認。**ブラウザでの実描画は未実施** | コードレビューによる机上確認＋要手動確認（pending） |
-| AC-2 | カテゴリ別キーワードでAC-1と異なるデータの表＋棒グラフ | 手動確認 | バックエンド側データ差異（列名・値とも別データ）は自動テスト・curlで確認済み（シナリオA・Bで `reply`/`columns`/`values` が明確に異なる）。フロント描画は同上のコードレビューのみ | コードレビューによる机上確認＋要手動確認（pending） |
-| AC-3 | 非マッチ入力（「こんにちは」）で表・グラフなし、案内テキストのみ、「エコー」応答なし | 自動テスト＋手動確認 | 自動テスト: `ChatControllerTest.chatReturnsGuidanceTextWithoutComponentsForNonMatchingMessage` が green（`components`空・`reply`に「エコー」含まず）。実機curlでも同一結果を確認。フロント側「表・グラフなし」の描画（`components`が`undefined`/空配列ならv-forが0回で何も描画されない）は`MessageBubble.vue`のロジック上妥当と確認 | 自動テスト: Pass／フロント目視は要手動確認 |
-| AC-4 | 統合テスト(MockMvc)で担当者系→table+bar_chart、非マッチ→components0件を確認 | 自動テスト(MockMvc) | `ChatControllerTest`の該当3テストが green。`jsonPath`で`type`・データ値まで検証済み | **Pass** |
-| AC-5 | 未知typeの応答でエラー吹き出し表示、画面操作可能維持 | 手動確認(モック差し替え等) | `chatApi.ts`の`isValidUiComponentSpec`が`type`が`table`/`bar_chart`以外なら不正と判定し`ChatResponseFormatError`をthrow、`conversationStore.ts`の`sendMessage`が`catch`で`ChatResponseFormatError`を判定し「応答を表示できませんでした」という新規アシスタント吹き出しを追加する実装をコードレビューで確認。例外は`try/catch`内で完結し外部に漏れないため、画面がクラッシュしない設計になっていることも確認。**実際にブラウザで未知typeデータを注入して確認する手順は未実施** | コードレビューによる机上確認＋要手動確認（pending） |
-| AC-6 | バックエンド停止状態で送信するとエラー吹き出し表示 | 手動確認 | `conversationStore.ts`の`sendMessage`は`ChatResponseFormatError`以外の例外（`fetch`失敗・non-2xxによる`Error`）を`catch`し「エラー: 応答を取得できませんでした」という既存文言の吹き出しを追加するパスが実装されていることをコードレビューで確認（`chatApi.ts`の`!response.ok`時の`throw new Error(...)`、および`fetch`自体が失敗した場合の素通しの例外の両方がこのフォールバックに合流する） | コードレビューによる机上確認＋要手動確認（pending） |
-| AC-7 | 表・グラフを含む会話から別会話へ切替→戻ると再描画 | 手動確認 | `conversationStore.ts`は`conversations`配列を状態として保持し、`selectConversation`は`activeConversationId`を変更するのみで`messages`（`components`を含む`Message`オブジェクト）を削除・変更しない。`ChatWindow.vue`の`messages`は`store.activeConversation?.messages`から算出されるcomputedであり、会話切替のたびに再評価されて同一の`components`データを持つ`Message`が再度`MessageBubble`にpropsとして渡る構造になっていることをコードレビューで確認。Vueの通常のリアクティブ再レンダリングの範囲内であり、追加のキャッシュ破棄・データ欠落のロジックは存在しない | コードレビューによる机上確認＋要手動確認（pending） |
-| AC-8 | 応答JSONスキーマ契約文書が実際のレスポンスと一致 | 手動確認 | 実機curlで得た3シナリオの生JSONを`docs/chat-response-schema.md`記載のサンプルJSONとフィールド単位で突き合わせ、`reply`／`components[].type`／`columns`／`rows`／`title`／`labels`／`values`（`12.0`のような小数点表記を含む）まで**完全一致**を確認した | **Pass** |
-| AC-9 | 空文字・空白のみ送信は拒否（バックエンド400／フロント送信抑止） | 自動テスト | バックエンド: `ChatControllerTest.chatReturnsBadRequestForBlankMessage`が green、実機curlでも400を確認。フロント: `MessageInput.vue`の`canSend`（`text.value.trim().length > 0`）により空白のみでは送信ボタンが`disabled`になり、`submit()`内でも`!canSend.value`なら`return`する二重の抑止をコードレビューで確認（既存実装の退行なし） | **Pass**（バックエンドは自動テストで確認、フロント送信抑止はコードレビューで退行なしを確認） |
+`sendReportPrompt` を `await` を挟まず2回連続で呼び出す（＝`:disabled` によるクリック無効化が効かなかった場合を模擬）と、会話が **2件** 作成されることを実測した。
 
-## 3. 見つかった問題
+```
+conversations created by 2 unguarded rapid calls: 2
+```
 
-自動テスト・実機curl・コードレビューの範囲で、プロダクトコードの不具合は見つからなかった。
+これはバグではなく、設計書 Risks/edge cases 節に明記された設計どおりの挙動である（「多重送信防止は `:disabled` 属性のみで実現し、ハンドラ内に `if (isLoading) return` は入れない」）。すなわち **AC-6（連打しても会話が1つしか作られない）の担保は完全にブラウザのネイティブ挙動（`disabled` 属性が付いた `<button>` は `click` イベントを発火しない）に依存しており、Node上のストア単体テストでは検証しきれない**。`Sidebar.vue` 側で `:disabled="store.isLoading"` が実装されていること（コード確認済み、下記参照）は確認できるが、実際にブラウザで連打しても1件しか増えないことは**手動でのブラウザ確認が必須**。
 
-参考情報（不具合ではなく申し送り事項）: `implementation-notes.md`に記載の通り、ステップ8実装時に`chatApi.ts`の型ガード関数シグネチャ（`Record<string, unknown>` → `unknown`）を実装者自身が修正済みであることを確認した。現在の`npm run build`はこの修正を含めてgreenであり、本テストフェーズで新たな型エラーは検出されなかった。
+## 受け入れ基準カバレッジ
 
-## 4. 手動確認チェックリスト（ブラウザでの実施が必要。本エージェントでは実施不可）
+| AC | 内容(要約) | 検証方法 | 結果 |
+|---|---|---|---|
+| AC-1 | サイドバー上下2分割、上部New Chat+履歴、下部に2レポートボタン表示 | コード確認（`Sidebar.vue` テンプレート・CSS: `.sidebar-top`/`.sidebar-reports`、`REPORT_BUTTONS` を `v-for`）＋ `App.vue`/`style.css` の高さ連鎖（`height:100vh`→`.app-body{flex:1;min-height:0}`→`.sidebar`はflex子として伸長）の確認 | コード検証済み（手動ブラウザ確認推奨） |
+| AC-2 | 「当月担当者別問い合わせ」押下→新規会話・同名ユーザー吹き出し→担当者別表＋棒グラフ応答 | コード確認（`sendReportPrompt`→`sendMessage`の実フロー）＋ 動的検証スクリプトで新規会話作成・ラベル一致送信・「担当」キーワードマッチ・応答2コンポーネントを実測。バックエンド`MockChatService.java`のキーワード「担当」とラベルの前方一致を確認 | 自動（ストア動的検証）で実証済み。実際のバックエンドAPI経由でのUI描画は手動ブラウザ確認推奨 |
+| AC-3 | 「当月カテゴリ別問い合わせ」押下→カテゴリ別表＋棒グラフ応答 | 同上（動的検証スクリプトで「カテゴリ」キーワードマッチと応答文言を実測） | 自動（ストア動的検証）で実証済み。UI描画は手動ブラウザ確認推奨 |
+| AC-4 | 既存会話でやり取りした状態でレポートボタン押下→既存会話は変化なし、新規会話にのみ送信 | 動的検証スクリプト（実ストアコード実行）で実測: 既存会話のメッセージ数不変・新規`activeConversationId`への切替・新規会話にのみメッセージ追加を確認 | **PASS（自動テストで実証済み）** |
+| AC-5 | レポート実行後、履歴先頭にボタンラベルがタイトルの会話が追加。切替後も再表示可 | コード確認（`sendMessage`のタイトル設定ロジック`conversation.messages.length===0`時に`trimmed.slice(0,20)`）＋動的検証で`title===label`を実測。会話配列は`unshift`のため先頭追加も確認（`createConversation`実装）。「切替後の再表示」はメッセージが`conversation.messages`に永続保持される設計（メモリ内）のためロジック上再現される | コード検証済み・タイトル一致は自動テストで実証。切替後の画面再表示は手動ブラウザ確認推奨 |
+| AC-6 | 応答待ち中はボタン無効化、連打しても会話1つのみ | コード確認: `Sidebar.vue`の`:disabled="store.isLoading"`実装済み。動的検証で**ストア自体には多重送信ガードがなく、防止策が`:disabled`属性のみに依存する**ことを実測 | コード検証済み（設計どおり）。**実際の連打時の挙動はブラウザでのネイティブ`disabled`動作に依存するため手動確認が必須** |
+| AC-7 | New Chat・会話選択・手入力送信の既存挙動が変わらない | コード確認: `handleNewChat`/`handleSelect`/`sendMessage`本体は無変更（diffで確認）。`MessageInput.vue`/`ChatWindow.vue`も無変更 | コード検証済み（回帰リスク低）。手動ブラウザ確認推奨 |
+| AC-8 | 会話履歴が多数でも上部のみスクロール、下部ボタンは常時表示 | コード確認: `.sidebar{min-height:0}`→`.sidebar-top{flex:1;min-height:0}`→`.conversation-list{flex:1;min-height:0;overflow-y:auto}`、`.sidebar-reports{flex-shrink:0}`という設計書どおりのFlexboxパターン（`app-main`/`chat-window`と同じ既存慣習）を確認 | コード検証済み。実際の多数件でのスクロール挙動は手動ブラウザ確認推奨 |
 
-以下は`docs/design.md`ステップ9に準拠した手順。フロント（`npm run dev`）・バックエンド（`./mvnw.cmd spring-boot:run`）を両方起動した状態で実施すること。
+## バックエンドのキーワードマッチ前提の確認
 
-1. **AC-1**: 「今月の問い合わせ件数を担当者別にまとめて」と送信し、アシスタント吹き出し内に要約テキスト・担当者別の表・棒グラフが縦に並んで表示されることを目視確認する
-2. **AC-2**: 続けて「カテゴリ別の問い合わせ件数を見せて」と送信し、AC-1とは異なる列名・値（カテゴリ別）の表・棒グラフが表示されることを確認する
-3. **AC-3**: 「こんにちは」と送信し、表・グラフが表示されず案内テキストのみが表示されること、「エコー: 」という文言が出ないことを確認する
-4. **AC-5**: 一時的に`MockChatService`の1シナリオの`type`相当（例: バックエンドの`@JsonSubTypes`に含まれない値をテスト用に差し込む、または`chatApi.ts`の検証関数呼び出し箇所に一時的な不正データを注入する）を未知の値に書き換えて再起動し、「応答を表示できませんでした」の吹き出しが表示されること、ブラウザのDevToolsコンソールに未処理例外が出ていないこと、他のUI操作（入力・送信・会話切替）が引き続き可能であることを確認したのち、変更を元に戻す
-5. **AC-6**: バックエンドプロセスを停止した状態でメッセージを送信し、「エラー: 応答を取得できませんでした」の吹き出しが表示されることを確認する
-6. **AC-7**: 表・グラフを含む会話（AC-1やAC-2で送信した会話）から、Sidebarで別の新規会話へ切り替え、その後元の会話に戻り、表・グラフが再描画されていることを確認する
-7. （上記全体を通して）ブラウザDevToolsのConsoleにVueの警告・エラーが出ていないことを確認する
+`backend/src/main/java/com/example/chatbackend/MockChatService.java` を確認した。
 
-## 5. 最終判定
+```java
+private static final String ASSIGNEE_KEYWORD = "担当";
+private static final String CATEGORY_KEYWORD = "カテゴリ";
+...
+if (message.contains(ASSIGNEE_KEYWORD)) { return assigneeScenario(); }
+if (message.contains(CATEGORY_KEYWORD) || message.contains(TYPE_KEYWORD)) { return categoryScenario(); }
+```
 
-- **自動テスト対象（AC-3, AC-4, AC-9）**: 全てPass（`./mvnw.cmd test` 9/9 green、フロント送信抑止もコードレビューで確認）
-- **実機統合確認（AC-8）**: Pass（3シナリオ+空白メッセージの実レスポンスが契約文書・自動テストの期待値と完全一致）
-- **フロントエンド静的検証**: Pass（`npm run build` green、`v-html` 不使用でXSS要件を満たす）
-- **ブラウザ操作が必要なAC（AC-1, AC-2, AC-5, AC-6, AC-7）**: いずれもコードレビュー上は実装が要件を満たす構造になっていることを確認したが、**実際のブラウザ描画確認は未実施（pending manual）**。本エージェントはブラウザを操作できないため、上記チェックリストに沿った手動確認をユーザー側で実施する必要がある
-- **プロダクトコードの不具合**: 発見なし
+- 「当月担当者別問い合わせ」は `"担当"` を部分文字列として含む → `assigneeScenario()` に一致
+- 「当月カテゴリ別問い合わせ」は `"カテゴリ"` を部分文字列として含む → `categoryScenario()` に一致
 
-**総合結論**: 自動化可能な範囲（バックエンドテスト・フロントビルド・API契約整合性）は全てPassであり、ブロッカーとなる不具合は見つからなかった。パイプラインを進める上での技術的な阻害要因はない。ただし、AC-1・AC-2・AC-5・AC-6・AC-7の最終確認（ブラウザでの実描画）は要件書が指定する「手動確認」であり自動化対象外のため、上記チェックリストに従った人手でのブラウザ確認が完了するまでは、これら5件のACは正式には「未検証（pending manual）」の状態である。
+要件書の前提（「前提（調査により確認）」節）どおりであることをコードレベルで再確認した。バックエンドは本改修で変更されていないため（`git diff --stat` でバックエンドファイルの変更なしを確認）、退行リスクはない。
+
+## 手動確認が必要な残項目（実施推奨事項）
+
+以下はコードレビューでは代替できず、`npm run dev` + バックエンド起動状態でのブラウザ目視確認が必要（設計書 Implementation steps 4 と同内容）:
+
+- AC-1: レイアウトが崩れず上下2分割で表示されるか
+- AC-2/AC-3: 実際にボタンを押して表＋棒グラフが正しく描画されるか
+- AC-5: 他会話に切り替えて戻った際に表＋グラフが再表示されるか
+- AC-6: 連打（特にネットワーク遅延がある実環境）で本当に会話が1つしか増えないか
+- AC-7: 目視での既存機能（New Chat／会話選択／手入力送信）の回帰確認
+- AC-8: 会話履歴を十数件作った状態でのスクロール挙動
+
+## 結論
+
+- 型検査・ビルド: PASS（エラー0件）
+- ストアロジック（AC-4中核部分）: 実コードに対する動的検証でPASS、不具合なし
+- コード上の不具合: 検出されなかった
+- AC-6の多重送信防止はストア内部ガードではなく`:disabled`属性のみに依存する設計（設計書に明記済みの既知の設計判断であり、バグではない）。ブラウザでの実機連打確認が唯一の最終担保手段である点を申し送る
+- AC-1, 2, 3, 5, 6, 7, 8 はコードレビューでは「実装が要件を満たす作りになっている」ことまでは確認できたが、要件書自身が定める検証方法（手動確認）を代替するものではないため、ブラウザでの目視確認を推奨する

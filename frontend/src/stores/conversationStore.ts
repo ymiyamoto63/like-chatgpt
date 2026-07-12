@@ -85,5 +85,11 @@ export const useConversationStore = defineStore('conversation', {
         this.isLoading = false
       }
     },
+    async sendReportPrompt(label: string) {
+      // createConversation() は同期処理のみで activeConversationId を確定させるため、
+      // 直後に呼ぶ sendMessage() は必ずこの新規会話に対して送信される（AC-4）。
+      this.createConversation()
+      await this.sendMessage(label)
+    },
   },
 })

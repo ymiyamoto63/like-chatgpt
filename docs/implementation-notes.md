@@ -120,3 +120,43 @@
 検証結果:
 - `frontend/` で `npm run build`（内部で `vue-tsc -b && vite build`）→ 成功、`dist/` 生成（`vite v7.3.6`、`40 modules transformed`、`built in 653ms`）。Bash実行環境のPATHにNode.jsが含まれていなかったため`/c/nvm4w/nodejs`を一時的にPATHへ追加して実行（プロジェクトファイルの変更ではない）
 - バックエンド変更なしのためMavenテストは再実行していない
+
+## 2026-07-12 — サイドバー定型レポートボタン — Step 1-2
+
+対応する設計書: `docs/design.md`（サイドバー定型レポートボタン）。本エントリは同設計書の実装ステップ1・2のみを対象とする（`Sidebar.vue` の変更は別ステップ・別担当）。
+
+- `frontend/src/constants/reportButtons.ts`（新規） — `REPORT_BUTTONS: readonly string[]` を `export`。値は設計書どおり `'当月担当者別問い合わせ'` と `'当月カテゴリ別問い合わせ'` の2件。`frontend/src/constants/` ディレクトリは本ファイルの作成により新規に生まれた（既存ディレクトリなし）
+- `frontend/src/stores/conversationStore.ts`（変更） — `actions` に `async sendReportPrompt(label: string)` を追加。`this.createConversation()` を呼んだ直後（`await` を挟まず）に `await this.sendMessage(label)` を呼ぶ設計書どおりの実装。`createConversation()` / `sendMessage()` 本体は無変更。順序不変条件（AC-4の担保根拠）を説明する日本語コメントを設計書の記述どおりそのまま付与した
+
+逸脱: なし。設計書の実装詳細（コード例）をそのまま反映した。
+
+## 検証結果（Step 1-2）
+
+- `cd frontend && npx vue-tsc -b` を実行し `EXIT_CODE=0`（エラーなし）を確認
+- 実行環境の補足: Bash実行環境（Git Bash）のPATHにNode.jsが含まれていなかったため、`/c/nvm4w/nodejs` を一時的にPATHへ追加して実行した（プロジェクトファイルの変更ではない。過去エントリと同様の対応）
+- `lessons-learned.md` の指摘どおり、引数なしの `vue-tsc --noEmit` は使わず `-b`（ビルドモード）で検査した
+
+## スコープ外（Step 1-2の範囲に含めなかったもの）
+
+- `frontend/src/components/Sidebar.vue` の変更（テンプレート2分割・レポートボタン描画・CSS）— 設計書の実装ステップ3
+- 手動でのAC-1〜AC-8通し確認 — 設計書の実装ステップ4（`Sidebar.vue` 未実装のため実施不可）
+
+## 2026-07-12 — サイドバー定型レポートボタン — Step 3
+
+対応する設計書: `docs/design.md`（サイドバー定型レポートボタン）。本エントリは実装ステップ3（`Sidebar.vue` の変更）のみを対象とする。ステップ1・2（`reportButtons.ts` 新規作成・`conversationStore.ts` への `sendReportPrompt` 追加）は前エントリの通り実施済みで、本ステップでは変更していない。
+
+- `frontend/src/components/Sidebar.vue`（変更） — テンプレートを `.sidebar-top`（New Chat ボタン＋会話履歴一覧、既存の `handleNewChat`/`handleSelect`・アクティブ表示ロジックは無変更）と `.sidebar-reports`（「定型レポート」見出し＋`REPORT_BUTTONS` を `v-for` した2つのボタン）の2セクションに分割。新規 `handleReport(label)` を追加し、`REPORT_BUTTONS` を import、各ボタンの `@click` から `store.sendReportPrompt(label)` を呼び出す（`Promise` は await しない。`MessageInput.vue` 等の既存の流儀と同一）。各ボタンには `:disabled="store.isLoading"` を付与し、`v-for` の `:key` はラベル文字列自身を使用。CSSは設計書の記載通り、`.sidebar` に `min-height: 0` を追加、`.sidebar-top` を `flex: 1; min-height: 0` のフレックスコンテナ化、`.conversation-list` に `flex: 1; min-height: 0; overflow-y: auto` を追加（既存にはなかった内部スクロール対応。設計書が明記する意図的な差分）、`.sidebar-reports`（`flex-shrink: 0`・上部との境界線 `border-top`）、`.sidebar-reports-heading`、`.report-button`（`.new-chat-button` と同トーン、`:hover:not(:disabled)` と `:disabled` は `MessageInput.vue` の `.send-button` に合わせた配色）を新規追加した。`.new-chat-button`／`.conversation-item` 系の既存スタイルは変更していない。
+
+逸脱: なし。設計書の実装詳細（テンプレート例・CSS例）をそのまま反映した。
+
+## 検証結果（Step 3）
+
+- `cd frontend && npx vue-tsc -b` → `EXIT_CODE=0`（エラーなし）
+- `cd frontend && npm run build`（内部で `vue-tsc -b && vite build`）→ 成功、`dist/` 生成（`vite v7.3.6`、`41 modules transformed`、`built in 2.12s`）
+- 実行環境の補足: Bash実行環境（Git Bash）のPATHにNode.jsが含まれていなかったため、`/c/nvm4w/nodejs` を一時的にPATHへ追加して実行した（プロジェクトファイルの変更ではない。過去エントリと同様の対応）
+- `lessons-learned.md` の指摘どおり、引数なしの `vue-tsc --noEmit` は使わず `-b`（ビルドモード）で検査した
+- ブラウザでの手動確認（AC-1〜AC-8の通し確認、設計書の実装ステップ4）は本ステップの依頼範囲外のため実施していない
+
+## スコープ外（Step 3の範囲に含めなかったもの）
+
+- 手動でのAC-1〜AC-8通し確認 — 設計書の実装ステップ4（フロントエンド・バックエンド起動状態でのブラウザ目視確認）
