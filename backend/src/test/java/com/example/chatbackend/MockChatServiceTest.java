@@ -60,6 +60,79 @@ class MockChatServiceTest {
 	}
 
 	@Test
+	void inquiryTriggerReturnsCategoryQuestion() {
+		ChatResponse response = mockChatService.generateResponse("新規問い合わせ");
+
+		assertThat(response.reply()).isEqualTo("問い合わせのカテゴリを選んでください。");
+		assertThat(response.components()).hasSize(1);
+		ChoicesComponent choices = (ChoicesComponent) response.components().get(0);
+		assertThat(choices.options()).containsExactly(
+				"カテゴリ: 請求", "カテゴリ: 技術", "カテゴリ: アカウント", "カテゴリ: その他", "キャンセル");
+	}
+
+	@Test
+	void categoryAnswerReturnsUrgencyQuestionNotCategoryReport() {
+		ChatResponse response = mockChatService.generateResponse("カテゴリ: 請求");
+
+		assertThat(response.reply()).isEqualTo("緊急度を選んでください。");
+		assertThat(response.components()).hasSize(1);
+		ChoicesComponent choices = (ChoicesComponent) response.components().get(0);
+		assertThat(choices.options()).containsExactly("緊急度: 高", "緊急度: 中", "緊急度: 低", "キャンセル");
+	}
+
+	@Test
+	void urgencyAnswerReturnsContentPrompt() {
+		ChatResponse response = mockChatService.generateResponse("緊急度: 高");
+
+		assertThat(response.reply()).isEqualTo("問い合わせ内容を入力してください。");
+		assertThat(response.components()).isEmpty();
+	}
+
+	@Test
+	void inquirySummaryReturnsConfirmationWithTableAndChoices() {
+		ChatResponse response = mockChatService
+				.generateResponse("カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
+
+		assertThat(response.reply()).isEqualTo("以下の内容で登録してよろしいですか？");
+		assertThat(response.components()).hasSize(2);
+
+		TableComponent table = (TableComponent) response.components().get(0);
+		assertThat(table.columns()).containsExactly("項目", "内容");
+		assertThat(table.rows()).containsExactly(
+				List.of("カテゴリ", "請求"),
+				List.of("緊急度", "高"),
+				List.of("内容", "請求額が二重になっている"));
+
+		ChoicesComponent choices = (ChoicesComponent) response.components().get(1);
+		assertThat(choices.options()).containsExactly("登録する", "やり直す", "キャンセル");
+	}
+
+	@Test
+	void submitReturnsCompletionWithReceiptNumber() {
+		ChatResponse response = mockChatService.generateResponse("登録する");
+
+		assertThat(response.reply()).isEqualTo("問い合わせを受け付けました。受付番号: INQ-0001");
+		assertThat(response.components()).isEmpty();
+	}
+
+	@Test
+	void retryReturnsCategoryQuestionAgain() {
+		ChatResponse response = mockChatService.generateResponse("やり直す");
+
+		assertThat(response.reply()).isEqualTo("問い合わせのカテゴリを選んでください。");
+		assertThat(response.components()).hasSize(1);
+		assertThat(response.components().get(0)).isInstanceOf(ChoicesComponent.class);
+	}
+
+	@Test
+	void cancelReturnsCancellationMessage() {
+		ChatResponse response = mockChatService.generateResponse("キャンセル");
+
+		assertThat(response.reply()).isEqualTo("問い合わせの登録を中止しました。");
+		assertThat(response.components()).isEmpty();
+	}
+
+	@Test
 	void nonMatchingMessageReturnsFallbackScenario() {
 		ChatResponse response = mockChatService.generateResponse("こんにちは");
 

@@ -4,6 +4,10 @@ import type { Conversation, Message, UiComponentSpec } from '../types/chat'
 
 const TITLE_MAX_LENGTH = 20
 
+export const INQUIRY_TRIGGER = '新規問い合わせ'
+const CATEGORY_ANSWER_PATTERN = /^カテゴリ: (請求|技術|アカウント|その他)$/
+const URGENCY_ANSWER_PATTERN = /^緊急度: (高|中|低)$/
+
 function createMessage(
   role: Message['role'],
   content: string,
@@ -18,6 +22,30 @@ function createMessage(
   }
 }
 
+function hasChoices(message: Message): boolean {
+  return message.components?.some((c) => c.type === 'choices') ?? false
+}
+
+// 新規問い合わせフローの内容入力ステップ中なら、バックエンド（ステートレス）が
+// 確認応答を組み立てられるよう全回答を累積した定型文を返す。フロー外なら null
+function buildInquirySummary(
+  conversation: Conversation,
+  content: string,
+): string | null {
+  const userMessages = conversation.messages.filter((m) => m.role === 'user')
+  const last = userMessages[userMessages.length - 1]
+  if (!last || !URGENCY_ANSWER_PATTERN.test(last.content)) {
+    return null
+  }
+  for (let i = userMessages.length - 2; i >= 0; i--) {
+    const answer = userMessages[i].content
+    if (CATEGORY_ANSWER_PATTERN.test(answer)) {
+      return `${answer} / ${last.content} / 内容: ${content}`
+    }
+  }
+  return null
+}
+
 export const useConversationStore = defineStore('conversation', {
   state: () => ({
     conversations: [] as Conversation[],
@@ -30,6 +58,11 @@ export const useConversationStore = defineStore('conversation', {
         state.conversations.find((c) => c.id === state.activeConversationId) ??
         null
       )
+    },
+    isInputLocked(): boolean {
+      const messages = this.activeConversation?.messages ?? []
+      const last = messages[messages.length - 1]
+      return !!last && last.role === 'assistant' && hasChoices(last)
     },
   },
   actions: {
@@ -52,6 +85,16 @@ export const useConversationStore = defineStore('conversation', {
         return
       }
 
+      const conversation = this.activeConversation
+      const summary = conversation
+        ? buildInquirySummary(conversation, trimmed)
+        : null
+      await this.dispatchUserMessage(summary ?? trimmed)
+    },
+    async sendChoice(option: string) {
+      await this.dispatchUserMessage(option)
+    },
+    async dispatchUserMessage(content: string) {
       let conversation = this.activeConversation
       if (!conversation) {
         this.createConversation()
@@ -62,14 +105,14 @@ export const useConversationStore = defineStore('conversation', {
       }
 
       if (conversation.messages.length === 0) {
-        conversation.title = trimmed.slice(0, TITLE_MAX_LENGTH)
+        conversation.title = content.slice(0, TITLE_MAX_LENGTH)
       }
 
-      conversation.messages.push(createMessage('user', trimmed))
+      conversation.messages.push(createMessage('user', content))
 
       this.isLoading = true
       try {
-        const { reply, components } = await postChat(trimmed)
+        const { reply, components } = await postChat(content)
         conversation.messages.push(createMessage('assistant', reply, components))
       } catch (err) {
         if (err instanceof ChatResponseFormatError) {
@@ -90,6 +133,10 @@ export const useConversationStore = defineStore('conversation', {
       // 直後に呼ぶ sendMessage() は必ずこの新規会話に対して送信される（AC-4）。
       this.createConversation()
       await this.sendMessage(label)
+    },
+    async startInquiry() {
+      this.createConversation()
+      await this.sendMessage(INQUIRY_TRIGGER)
     },
   },
 })

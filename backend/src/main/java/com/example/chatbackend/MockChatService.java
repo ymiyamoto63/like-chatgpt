@@ -10,7 +10,23 @@ public class MockChatService {
 	private static final String CATEGORY_KEYWORD = "カテゴリ";
 	private static final String TYPE_KEYWORD = "種別";
 
+	private static final String INQUIRY_TRIGGER = "新規問い合わせ";
+	private static final String CATEGORY_ANSWER_PREFIX = "カテゴリ: ";
+	private static final String URGENCY_ANSWER_PREFIX = "緊急度: ";
+	private static final String SUMMARY_URGENCY_MARKER = " / 緊急度: ";
+	private static final String SUMMARY_CONTENT_MARKER = " / 内容: ";
+	private static final String SUBMIT_LABEL = "登録する";
+	private static final String RETRY_LABEL = "やり直す";
+	private static final String CANCEL_LABEL = "キャンセル";
+	private static final String RECEIPT_NUMBER = "INQ-0001";
+
 	public ChatResponse generateResponse(String message) {
+		// 新規問い合わせフローの定型文は「カテゴリ」等の既存キーワードを含むため、
+		// レポートシナリオより先に判定する
+		ChatResponse inquiryResponse = inquiryFlowResponse(message);
+		if (inquiryResponse != null) {
+			return inquiryResponse;
+		}
 		if (message.contains(ASSIGNEE_KEYWORD)) {
 			return assigneeScenario();
 		}
@@ -18,6 +34,84 @@ public class MockChatService {
 			return categoryScenario();
 		}
 		return fallbackScenario();
+	}
+
+	private ChatResponse inquiryFlowResponse(String message) {
+		if (message.equals(INQUIRY_TRIGGER) || message.equals(RETRY_LABEL)) {
+			return inquiryCategoryQuestion();
+		}
+		if (message.startsWith(CATEGORY_ANSWER_PREFIX)) {
+			ChatResponse confirmation = inquiryConfirmation(message);
+			if (confirmation != null) {
+				return confirmation;
+			}
+			return inquiryUrgencyQuestion();
+		}
+		if (message.startsWith(URGENCY_ANSWER_PREFIX)) {
+			return inquiryContentPrompt();
+		}
+		if (message.equals(SUBMIT_LABEL)) {
+			return inquiryCompletion();
+		}
+		if (message.equals(CANCEL_LABEL)) {
+			return inquiryCancellation();
+		}
+		return null;
+	}
+
+	private ChatResponse inquiryCategoryQuestion() {
+		return new ChatResponse(
+				"問い合わせのカテゴリを選んでください。",
+				List.of(new ChoicesComponent(List.of(
+						CATEGORY_ANSWER_PREFIX + "請求",
+						CATEGORY_ANSWER_PREFIX + "技術",
+						CATEGORY_ANSWER_PREFIX + "アカウント",
+						CATEGORY_ANSWER_PREFIX + "その他",
+						CANCEL_LABEL))));
+	}
+
+	private ChatResponse inquiryUrgencyQuestion() {
+		return new ChatResponse(
+				"緊急度を選んでください。",
+				List.of(new ChoicesComponent(List.of(
+						URGENCY_ANSWER_PREFIX + "高",
+						URGENCY_ANSWER_PREFIX + "中",
+						URGENCY_ANSWER_PREFIX + "低",
+						CANCEL_LABEL))));
+	}
+
+	private ChatResponse inquiryContentPrompt() {
+		return new ChatResponse("問い合わせ内容を入力してください。", List.of());
+	}
+
+	private ChatResponse inquiryConfirmation(String message) {
+		int urgencyIndex = message.indexOf(SUMMARY_URGENCY_MARKER);
+		int contentIndex = message.indexOf(SUMMARY_CONTENT_MARKER);
+		if (urgencyIndex < 0 || contentIndex < 0 || urgencyIndex >= contentIndex) {
+			return null;
+		}
+		String category = message.substring(CATEGORY_ANSWER_PREFIX.length(), urgencyIndex);
+		String urgency = message.substring(urgencyIndex + SUMMARY_URGENCY_MARKER.length(), contentIndex);
+		String content = message.substring(contentIndex + SUMMARY_CONTENT_MARKER.length());
+		TableComponent summary = new TableComponent(
+				List.of("項目", "内容"),
+				List.of(
+						List.of("カテゴリ", category),
+						List.of("緊急度", urgency),
+						List.of("内容", content)));
+		ChoicesComponent choices = new ChoicesComponent(
+				List.of(SUBMIT_LABEL, RETRY_LABEL, CANCEL_LABEL));
+		return new ChatResponse("以下の内容で登録してよろしいですか？", List.of(summary, choices));
+	}
+
+	private ChatResponse inquiryCompletion() {
+		return new ChatResponse(
+				"問い合わせを受け付けました。受付番号: " + RECEIPT_NUMBER,
+				List.of());
+	}
+
+	private ChatResponse inquiryCancellation() {
+		return new ChatResponse("問い合わせの登録を中止しました。", List.of());
 	}
 
 	private ChatResponse assigneeScenario() {

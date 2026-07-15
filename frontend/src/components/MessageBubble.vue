@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import type { BarChartComponent, Message, TableComponent, UiComponentSpec } from '../types/chat'
+import type {
+  BarChartComponent,
+  ChoicesComponent,
+  Message,
+  TableComponent,
+  UiComponentSpec,
+} from '../types/chat'
 import TableView from './TableView.vue'
 import BarChartView from './BarChartView.vue'
+import ChoicesView from './ChoicesView.vue'
 
 defineProps<{
   message: Message
+  choicesEnabled?: boolean
+}>()
+
+const emit = defineEmits<{
+  select: [option: string]
 }>()
 
 function isTableComponent(component: UiComponentSpec): component is TableComponent {
@@ -13,6 +25,10 @@ function isTableComponent(component: UiComponentSpec): component is TableCompone
 
 function isBarChartComponent(component: UiComponentSpec): component is BarChartComponent {
   return component.type === 'bar_chart'
+}
+
+function isChoicesComponent(component: UiComponentSpec): component is ChoicesComponent {
+  return component.type === 'choices'
 }
 </script>
 
@@ -27,6 +43,12 @@ function isBarChartComponent(component: UiComponentSpec): component is BarChartC
       >
         <TableView v-if="isTableComponent(component)" :spec="component" />
         <BarChartView v-else-if="isBarChartComponent(component)" :spec="component" />
+        <ChoicesView
+          v-else-if="isChoicesComponent(component)"
+          :spec="component"
+          :disabled="!choicesEnabled"
+          @select="emit('select', $event)"
+        />
       </div>
     </div>
   </div>

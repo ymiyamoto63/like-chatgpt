@@ -15,6 +15,10 @@ function handleSelect(id: string) {
 function handleReport(label: string) {
   store.sendReportPrompt(label)
 }
+
+function handleNewInquiry() {
+  store.startInquiry()
+}
 </script>
 
 <template>
@@ -22,6 +26,14 @@ function handleReport(label: string) {
     <div class="sidebar-top">
       <button type="button" class="new-chat-button" @click="handleNewChat">
         New Chat
+      </button>
+      <button
+        type="button"
+        class="new-inquiry-button"
+        :disabled="store.isLoading"
+        @click="handleNewInquiry"
+      >
+        新規問い合わせ
       </button>
       <ul class="conversation-list">
         <li
@@ -80,6 +92,26 @@ function handleReport(label: string) {
   color: var(--text-h);
   font: inherit;
   cursor: pointer;
+}
+
+.new-inquiry-button {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.new-inquiry-button:hover:not(:disabled) {
+  background: var(--code-bg);
+}
+
+.new-inquiry-button:disabled {
+  background: var(--code-bg);
+  color: var(--text);
+  cursor: not-allowed;
 }
 
 .conversation-list {

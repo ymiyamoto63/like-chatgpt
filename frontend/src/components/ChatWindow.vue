@@ -8,8 +8,16 @@ const store = useConversationStore()
 
 const messages = computed(() => store.activeConversation?.messages ?? [])
 
+const latestMessageId = computed(
+  () => messages.value[messages.value.length - 1]?.id ?? null,
+)
+
 function handleSend(content: string) {
   store.sendMessage(content)
+}
+
+function handleChoiceSelect(option: string) {
+  store.sendChoice(option)
 }
 </script>
 
@@ -23,10 +31,15 @@ function handleSend(content: string) {
         v-for="message in messages"
         :key="message.id"
         :message="message"
+        :choices-enabled="message.id === latestMessageId && !store.isLoading"
+        @select="handleChoiceSelect"
       />
       <p v-if="store.isLoading" class="loading">応答を生成中...</p>
     </div>
-    <MessageInput :disabled="store.isLoading" @send="handleSend" />
+    <MessageInput
+      :disabled="store.isLoading || store.isInputLocked"
+      @send="handleSend"
+    />
   </div>
 </template>
 
