@@ -3,9 +3,12 @@ FROM maven:3.9.9-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-# backendだけコピー（キャッシュ効率UP）
-COPY backend/pom.xml backend/mvnw backend/.mvn /app/
+# ★ 分けてコピー（重要）
+COPY backend/pom.xml /app/
+COPY backend/mvnw /app/
+COPY backend/.mvn /app/.mvn
 
+# 実行権限
 RUN chmod +x mvnw
 
 # 依存ダウンロード
