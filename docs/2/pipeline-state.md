@@ -9,4 +9,4 @@
 - [x] 3. implementation（step 1-7/7 完了）
 - [x] 4. testing（retry 0/3。失敗なし。UI目視系ACはブラウザツール不在のため未実施を明記）
 - [x] 5. review（retry 0/2。指摘事項なし）
-- [ ] 6. publish
+- [x] 6. publish（PR #3: https://github.com/ymiyamoto63/like-chatgpt/pull/3）
