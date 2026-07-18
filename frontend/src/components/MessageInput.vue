@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const emit = defineEmits<{
   send: [content: string]
 }>()
 
-defineProps<{
+const props = defineProps<{
   disabled?: boolean
 }>()
 
 const text = ref('')
+const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+// 選択肢や応答待ちで無効化された入力欄が再び有効になったタイミング
+// （例: 新規問い合わせで「問い合わせ内容を入力してください。」表示後）でフォーカスを戻す
+watch(
+  () => props.disabled,
+  async (now, prev) => {
+    if (prev && !now) {
+      await nextTick()
+      textareaRef.value?.focus()
+    }
+  },
+)
 
 const canSend = computed(() => text.value.trim().length > 0)
 
@@ -33,6 +46,7 @@ function onKeydown(event: KeyboardEvent) {
   <div class="shrink-0 border-t border-zinc-200 dark:border-zinc-800">
     <div class="mx-auto flex max-w-3xl items-end gap-2 px-5 py-4">
       <textarea
+        ref="textareaRef"
         v-model="text"
         class="min-h-0 flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-[15px] text-zinc-900 placeholder-zinc-400 transition-shadow outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:disabled:bg-zinc-800"
         rows="1"
