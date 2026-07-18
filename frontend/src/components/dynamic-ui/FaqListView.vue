@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { FaqListComponent } from '../types/chat'
-import { FAQ_ANSWER_PREFIX } from '../constants/faq'
+import type { FaqListComponent } from '../../types/chat'
+import { FAQ_ANSWER_PREFIX } from '../../constants/faq'
 
 defineProps<{
   spec: FaqListComponent

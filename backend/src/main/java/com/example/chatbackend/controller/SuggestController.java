@@ -1,4 +1,8 @@
-package com.example.chatbackend;
+package com.example.chatbackend.controller;
+
+import com.example.chatbackend.dto.suggest.SuggestRequest;
+import com.example.chatbackend.dto.suggest.SuggestResponse;
+import com.example.chatbackend.service.MockSuggestService;
 
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

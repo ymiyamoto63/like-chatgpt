@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ChoicesComponent } from '../types/chat'
+import type { ChoicesComponent } from '../../types/chat'
 
 defineProps<{
   spec: ChoicesComponent

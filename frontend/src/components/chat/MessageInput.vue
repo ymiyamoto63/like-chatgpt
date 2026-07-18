@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { postSuggest } from '../api/suggestApi'
+import { postSuggest } from '../../api/suggestApi'
 
 const SUGGEST_DEBOUNCE_MS = 300
 

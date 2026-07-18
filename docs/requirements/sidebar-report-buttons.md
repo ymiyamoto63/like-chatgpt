@@ -78,7 +78,7 @@
 
 - 技術スタックは既存踏襲: フロント Vue 3 + TypeScript + Pinia（Vite）、バックエンド Java Spring Boot + Maven
 - バックエンドは変更しない（ステートレス・キーワードマッチのモックを維持）
-- 送信は既存の `conversationStore` のアクション経由とし、APIクライアント（`chatApi.ts`）・レスポンススキーマ（`docs/chat-response-schema.md`）には手を入れない
+- 送信は既存の `conversationStore` のアクション経由とし、APIクライアント（`chatApi.ts`）・レスポンススキーマ（`docs/api/chat-response-schema.md`）には手を入れない
 - スタイルは既存の CSS カスタムプロパティ（`--border`, `--bg`, `--accent` 等）と Sidebar の既存トーンに合わせる
 - 過度な作り込みをせず「動くプロトタイプ」を優先する既存方針を踏襲する
 

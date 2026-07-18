@@ -1,4 +1,6 @@
-package com.example.chatbackend;
+package com.example.chatbackend.service;
+
+import com.example.chatbackend.dto.suggest.SuggestResponse;
 
 import java.util.List;
 import org.springframework.stereotype.Service;

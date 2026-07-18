@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { BarChartComponent } from '../types/chat'
+import type { BarChartComponent } from '../../types/chat'
 
 const props = defineProps<{
   spec: BarChartComponent

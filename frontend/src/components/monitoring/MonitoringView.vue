@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import { useMonitoringStore } from '../stores/monitoringStore'
-import { useConversationStore } from '../stores/conversationStore'
+import { useMonitoringStore } from '../../stores/monitoringStore'
+import { useConversationStore } from '../../stores/conversationStore'
 import {
   buildAlertReplyText,
   buildCauseAnalysisChoiceLabel,
   CLOSE_ALERT_LABEL,
   type AlertSeverity,
   type MonitoringAlert,
-} from '../constants/monitoringAlert'
+} from '../../constants/monitoringAlert'
 import TopologyDiagram from './TopologyDiagram.vue'
 
 const store = useMonitoringStore()

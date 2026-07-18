@@ -1,4 +1,4 @@
-package com.example.chatbackend;
+package com.example.chatbackend.dto.monitoring;
 
 import java.util.List;
 

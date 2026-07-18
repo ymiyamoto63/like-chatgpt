@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useConversationStore } from '../stores/conversationStore'
-import { useMonitoringStore } from '../stores/monitoringStore'
-import { REPORT_BUTTONS } from '../constants/reportButtons'
+import { useConversationStore } from '../../stores/conversationStore'
+import { useMonitoringStore } from '../../stores/monitoringStore'
+import { REPORT_BUTTONS } from '../../constants/reportButtons'
 
 const store = useConversationStore()
 const monitoringStore = useMonitoringStore()

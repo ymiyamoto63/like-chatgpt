@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useConversationStore } from '../stores/conversationStore'
+import { useConversationStore } from '../../stores/conversationStore'
 import MessageBubble from './MessageBubble.vue'
 import MessageInput from './MessageInput.vue'
 

@@ -1,4 +1,4 @@
-package com.example.chatbackend;
+package com.example.chatbackend.controller;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;

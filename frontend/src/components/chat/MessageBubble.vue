@@ -7,12 +7,12 @@ import type {
   TableComponent,
   TrendChartComponent,
   UiComponentSpec,
-} from '../types/chat'
-import TableView from './TableView.vue'
-import BarChartView from './BarChartView.vue'
-import ChoicesView from './ChoicesView.vue'
-import TrendChartView from './TrendChartView.vue'
-import FaqListView from './FaqListView.vue'
+} from '../../types/chat'
+import TableView from '../dynamic-ui/TableView.vue'
+import BarChartView from '../dynamic-ui/BarChartView.vue'
+import ChoicesView from '../dynamic-ui/ChoicesView.vue'
+import TrendChartView from '../dynamic-ui/TrendChartView.vue'
+import FaqListView from '../dynamic-ui/FaqListView.vue'
 
 defineProps<{
   message: Message

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TableComponent } from '../types/chat'
+import type { TableComponent } from '../../types/chat'
 
 defineProps<{
   spec: TableComponent

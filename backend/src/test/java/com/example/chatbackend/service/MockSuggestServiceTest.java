@@ -1,4 +1,4 @@
-package com.example.chatbackend;
+package com.example.chatbackend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;

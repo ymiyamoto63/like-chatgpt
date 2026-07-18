@@ -1,4 +1,6 @@
-package com.example.chatbackend;
+package com.example.chatbackend.dto.chat;
+
+import com.example.chatbackend.dto.component.UiComponent;
 
 import java.util.List;
 

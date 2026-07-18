@@ -1,4 +1,8 @@
-package com.example.chatbackend;
+package com.example.chatbackend.controller;
+
+import com.example.chatbackend.dto.chat.ChatRequest;
+import com.example.chatbackend.dto.chat.ChatResponse;
+import com.example.chatbackend.service.MockChatService;
 
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;

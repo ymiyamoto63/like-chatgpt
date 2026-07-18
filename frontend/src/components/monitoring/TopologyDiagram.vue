@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MonitoringSnapshot } from '../types/monitoring'
-import { getMonitoringLevel, type MonitoringLevel } from '../constants/monitoring'
+import type { MonitoringSnapshot } from '../../types/monitoring'
+import { getMonitoringLevel, type MonitoringLevel } from '../../constants/monitoring'
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
   VIEWBOX_WIDTH,
   VIEWBOX_HEIGHT,
   NODE_POSITIONS,
-} from '../constants/monitoringLayout'
+} from '../../constants/monitoringLayout'
 
 const props = defineProps<{
   snapshot: MonitoringSnapshot

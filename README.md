@@ -1,6 +1,6 @@
 # like_chatgpt
 
-ChatGPT風のチャットUIを試作するプロジェクトです。バックエンドは`POST /api/chat`で構造化JSON応答（`{reply, components[]}`）を返すキーワードマッチのモック実装で、メッセージ内容に応じて表や棒グラフを含む応答を生成します。応答JSONのスキーマ詳細は`docs/chat-response-schema.md`を参照してください。
+ChatGPT風のチャットUIを試作するプロジェクトです。バックエンドは`POST /api/chat`で構造化JSON応答（`{reply, components[]}`）を返すキーワードマッチのモック実装で、メッセージ内容に応じて表や棒グラフを含む応答を生成します。応答JSONのスキーマ詳細は`docs/api/chat-response-schema.md`を参照してください。
 
 ## 前提ツール
 

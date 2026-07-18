@@ -1,4 +1,11 @@
-package com.example.chatbackend;
+package com.example.chatbackend.service;
+
+import com.example.chatbackend.dto.chat.ChatResponse;
+import com.example.chatbackend.dto.component.BarChartComponent;
+import com.example.chatbackend.dto.component.ChoicesComponent;
+import com.example.chatbackend.dto.component.FaqListComponent;
+import com.example.chatbackend.dto.component.TableComponent;
+import com.example.chatbackend.dto.component.TrendChartComponent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
