@@ -1,270 +1,302 @@
-# 設計書: システム構成図モニタリング画面
+# 設計書: モニタリング画面とチャットの連携（異常検知アラート）
 
-対応する要件定義: [docs/requirements/system-monitoring-view.md](requirements/system-monitoring-view.md)
+対応する要件定義: [docs/requirements/monitoring-chat-alert.md](requirements/monitoring-chat-alert.md)
 
 ## Approach
 
-サイドバーに新規ボタン「システムモニタリング」を追加し、押下すると `App.vue` のメイン領域が `ChatWindow` から新規コンポーネント `MonitoringView` に切り替わる（ルーター不使用・`v-if`/`v-else` の条件描画、切替状態は新規 Pinia ストア `monitoringStore` の `activeScreen` フラグで保持）。バックエンドは新規 `GET /api/monitoring/snapshot` を追加し、固定トポロジー（9ノード・12エッジ）と現在のCPU/メモリ/帯域使用率をひとつのJSONスナップショットとして返す。メトリクスは `MonitoringMetricsService`（`@Service` シングルトン）がインメモリの前回値マップを保持し、リクエストごとに1ティック分のランダムウォーク＋周期スパイクを計算して返す（チャット機能側は無変更でステートレスのまま）。フロントエンドは `monitoringApi.ts` が `chatApi.ts` と同じ方針（必須フィールド検証・未知フィールド無視・不正時は例外）で応答を検証し、`monitoringStore` が5秒間隔のポーリング（`setInterval`）を管理する。ポーリングの開始/停止は `MonitoringView.vue` の `onMounted`/`onUnmounted` に一本化し、画面がDOMに存在する間だけ通信が発生するようにする。構成図は `TopologyDiagram.vue` が固定座標（フロント側定数）でノード・エッジをSVG（`<rect>`/`<line>`/`<text>`、外部ライブラリ不使用）に自作描画し、CPU/メモリ/帯域の3段階しきい値（70%/90%）で枠色・線色を切り替える。既存のチャット関連ファイル（`ChatController`/`MockChatService`/`UiComponent`/`chatApi.ts`/`chat.ts`/`conversationStore.ts`）には一切変更を加えない。
+`monitoringStore`（`frontend/src/stores/monitoringStore.ts`）のスナップショット取得成功時に、ノードごとのCPU・メモリ使用率を本機能専用の2段階しきい値（`frontend/src/constants/monitoringAlert.ts`の`ALERT_WARNING_THRESHOLD`=80／`ALERT_DANGER_THRESHOLD`=90。トポロジー図自体の色分けしきい値`constants/monitoring.ts`の`WARNING_THRESHOLD`=70／`DANGER_THRESHOLD`=90とは独立）と比較する検知処理を追加する（要件定義Q10で追加決定。初期設計時はdangerのみだったが、動作確認時にdangerへ到達しづらいという指摘を受け2段階化した）。ノードごとに直近で通知した重大度を`alertedTierByNodeId`（`Map<string, 'warning' | 'danger'>`）に記録し、同一水準への再通知を抑制する。80%未満に戻ると完全にクールダウン解除、90%未満（80%以上）に戻るとdangerのみ解除（warningとしての再通知はしない）。通知待ちアラートは`pendingAlert`という単一のオブジェクト（null許容、`severity: 'warning' | 'danger'`を持つ）として保持し、既にpendingAlertがある間は新規検知を行わない（＝1件のみ通知）。
+
+`MonitoringView.vue`は`pendingAlert`が存在する間バナーを表示する。バナークリック時のハンドラは、新設する`conversationStore.createAlertConversation(replyText, choiceOptions)`アクションを呼び出し、バックエンド通信なしでアラート文＋`choices`コンポーネントを持つアシスタント発言を新規会話に直接追加したうえで`monitoringStore.consumePendingAlert()`でpendingAlertをクリアし`monitoringStore.showChat()`で画面遷移する。アラート文・選択肢ラベルの文言組み立ては新設する`frontend/src/constants/monitoringAlert.ts`のヘルパー関数（`buildAlertReplyText`/`buildCauseAnalysisChoiceLabel`/`CLOSE_ALERT_LABEL`）に集約し、`MonitoringView.vue`・`monitoringStore.ts`の双方から参照できるようにする。
+
+選択肢クリック後は既存の`ChoicesView`→`ChatWindow.handleChoiceSelect`→`conversationStore.sendChoice`→`dispatchUserMessage`→`POST /api/chat`という既存フローをそのまま流用する（新規コードなし）。バックエンドの`MockChatService`に、選択肢ラベル文字列に含まれるキーワード（「使用率が高い原因を教えて」＋「CPU」または「メモリ」、あるいは「閉じる」の完全一致）で分岐する`alertFlowResponse`メソッドを追加し、`generateResponse`の判定チェーンに`inquiryFlowResponse`の直後に組み込む。原因分析データはメトリクス種別（CPU／メモリ）ごとに固定の架空データ（プロセス別使用率の表＋棒グラフ）を返す、ノードに依存しない汎用テンプレートとする。
+
+この設計により、バックエンドは監視データやアラート概念を一切知らない（既存のステートレス・キーワードマッチ方針を維持）、新規UIコンポーネント型も追加しない、既存のチャット関連ファイル（`ChatController`/`ChatResponse`/`UiComponent`各実装/`chatApi.ts`/`types/chat.ts`）にも変更を加えない。
 
 ## Alternatives considered
 
-- **ポーリングの開始/停止を各サイドバーハンドラ（New Chat・会話選択・定型レポート・新規問い合わせ）に個別に `stopPolling()` を仕込む案**も検討した。しかし呼び出し漏れのリスクがあり、将来「チャットに戻る」導線が増えた場合に事故りやすい。`MonitoringView.vue` の `onMounted`/`onUnmounted` にポーリング制御を一本化し、サイドバー側は `activeScreen` フラグを立て替えるだけ（Vueのコンポーネントのマウント/アンマウントが自動的にポーリングの開始/停止に連動）とする方が単一責任で事故りにくいため、こちらを採用した。
-- **スパイク対象（ノード/エッジ）ごとに独立した非同期スケジューラ（別スレッド・`@Scheduled`）でバックグラウンド更新する案**も検討したが、要件は「5秒ポーリングのたびに値が変動していればよい」（AC-2は連続呼び出しでの変動を検証するのみ）ため、リクエスト駆動（1回の `GET` 呼び出し＝1ティック）の方が実装・テストとも単純でスレッド安全性の考慮も最小限で済む。将来ポーリング間隔が変わっても挙動が破綻しない前提（画面表示中のみ・5秒固定）に合致するため、こちらを採用した。
-- ノード・エッジの座標（レイアウト）を **バックエンドAPIレスポンスに含める案**も検討したが、要件は「固定座標レイアウト・表示専用」であり、座標は純粋にフロントの描画関心事である。バックエンドはid/labelとメトリクス値のみを返し、座標はフロント側の定数ファイル（`monitoringLayout.ts`）に持たせることで、既存の「モックデータはバックエンドで生成しフロントは描画に徹する」方針を保ちつつAPIスキーマを最小に保てる。
+- **アラート吹き出しをバックエンド経由（`POST /api/chat`にトリガー文を送信）で生成する案**も検討した。しかし`MockChatService`に「現在どのノードが異常か」という監視データの知識を持たせる必要が生じ、既存のステートレス・キーワードマッチのみという設計方針から逸脱する。フロントエンドの`monitoringStore`が既に閾値判定のためsnapshotを保持しているため、そのままアラート文を組み立てられるフロントエンド生成案の方が実装コストが低く、要件定義のQ3決定（フロントエンドローカル生成）にも合致するため不採用とした。
+- **アラート専用の新しいMessage role（例: `'system'`）を追加する案**も検討したが、既存の`Message`型は`role: 'user' | 'assistant'`のみで、`MessageBubble.vue`はrole問わず`components`があれば描画する。アラート文は「アシスタントが能動的に話しかけた」体裁として`role: 'assistant'`のメッセージをそのまま会話へpushするだけで表現でき、`Message`型・`MessageBubble.vue`の変更が一切不要になるため、新role追加は不採用とした（要件定義のQ3で確認済み）。
+- **通知対象ノードごとに個別の原因分析データを用意する案**も検討したが、9ノード分のデータをハードコードするのは過剰であり、要件定義Q7の決定（メトリクス種別ごとの汎用テンプレート）に従い、CPU用・メモリ用の2パターンのみ実装する。
+- **選択肢クリック時に送信する文字列を短い技術的トリガー文（例: `原因調査:CPU:web-1`）にする案**も検討したが、既存の`choices`コンポーネントは「表示ラベル＝送信文」という契約（`docs/chat-response-schema.md`）であり、技術的な文字列がボタンラベルとして見えるのはデモ上不自然。ノード名・メトリクス種別を含む自然な日本語文（例: 「Web-1のCPU使用率が高い原因を教えて」）をラベル兼トリガー文とすることで、既存の「カテゴリ: 請求」のような定型文パターンを踏襲しつつ、バックエンドのキーワードマッチ（「使用率が高い原因を教えて」＋「CPU」/「メモリ」）にも利用できる一石二鳥の設計とした。
 
 ## Files affected
 
-### バックエンド（新規）
+### バックエンド（変更）
 
-- `backend/src/main/java/com/example/chatbackend/MonitoringNode.java`: ノードのメトリクスDTO（record）
-- `backend/src/main/java/com/example/chatbackend/MonitoringEdge.java`: エッジのメトリクスDTO（record）
-- `backend/src/main/java/com/example/chatbackend/MonitoringSnapshot.java`: レスポンス全体のDTO（record）
-- `backend/src/main/java/com/example/chatbackend/MonitoringMetricsService.java`: 固定トポロジー定義＋インメモリ前回値保持＋ランダムウォーク／周期スパイク生成ロジック
-- `backend/src/main/java/com/example/chatbackend/MonitoringController.java`: `GET /api/monitoring/snapshot` エンドポイント
-- `backend/src/test/java/com/example/chatbackend/MonitoringMetricsServiceTest.java`: サービス単体テスト（トポロジー形状・値域・変動をAC-1/AC-2相当で検証）
-- `backend/src/test/java/com/example/chatbackend/MonitoringControllerTest.java`: MockMvcによるHTTPレベルテスト
+- `backend/src/main/java/com/example/chatbackend/MockChatService.java`: `alertFlowResponse`メソッド（原因分析2分岐＋「閉じる」分岐）を追加し、`generateResponse`の判定チェーンに組み込む
+- `backend/src/test/java/com/example/chatbackend/MockChatServiceTest.java`: 新規分岐のテストケースを追加
 
 ### フロントエンド（新規）
 
-- `frontend/src/types/monitoring.ts`: `MonitoringNode`/`MonitoringEdge`/`MonitoringSnapshot` 型定義
-- `frontend/src/api/monitoringApi.ts`: `getMonitoringSnapshot()` とレスポンス検証（`MonitoringResponseFormatError`）
-- `frontend/src/constants/monitoring.ts`: しきい値（70/90）・ポーリング間隔（5000ms）・3段階レベル判定関数
-- `frontend/src/constants/monitoringLayout.ts`: ノードid→固定座標のマップ、ノード枠サイズ、SVG viewBox定数
-- `frontend/src/stores/monitoringStore.ts`: 画面切替状態（`activeScreen`）＋モニタリングデータ・ポーリング制御
-- `frontend/src/components/MonitoringView.vue`: モニタリング画面本体（タイトル・最終更新時刻・エラーバナー/エラー表示・ポーリングのライフサイクル管理）
-- `frontend/src/components/TopologyDiagram.vue`: 構成図SVG描画（ノード＝ゲージ＋数値＋枠色、エッジ＝線色＋%ラベル）
+- `frontend/src/constants/monitoringAlert.ts`: `MonitoringAlert`型、`buildAlertReplyText`/`buildCauseAnalysisChoiceLabel`関数、`CLOSE_ALERT_LABEL`定数
 
 ### フロントエンド（変更）
 
-- `frontend/src/App.vue`: `monitoringStore.activeScreen` に応じて `ChatWindow` / `MonitoringView` を条件描画
-- `frontend/src/components/Sidebar.vue`: 「システムモニタリング」ボタンを追加（選択中スタイル付き）。既存4操作（New Chat・会話選択・定型レポート・新規問い合わせ）のハンドラ先頭で `monitoringStore.showChat()` を呼びチャット画面へ復帰させる
+- `frontend/src/stores/monitoringStore.ts`: `alertedNodeIds`（クールダウン用Set）・`pendingAlert`状態、`updateAlertState`（検知ロジック）・`consumePendingAlert`アクションを追加。`fetchSnapshot`成功時に`updateAlertState`を呼び出す
+- `frontend/src/stores/conversationStore.ts`: `createAlertConversation(replyText: string, choiceOptions: string[])`アクションを追加（新規会話作成＋タイトル設定＋アシスタントメッセージのバックエンド未経由push）
+- `frontend/src/components/MonitoringView.vue`: `store.pendingAlert`に応じたバナーの条件描画、クリックハンドラ（`conversationStore.createAlertConversation` → `monitoringStore.consumePendingAlert` → `monitoringStore.showChat`）を追加
 
-### ドキュメント（新規）
+### ドキュメント（変更）
 
-- `docs/monitoring-response-schema.md`: 新APIの応答JSONスキーマ・トポロジー定義を `docs/chat-response-schema.md` と同水準の粒度で文書化
+- `docs/chat-response-schema.md`: 「シナリオF: モニタリング連携アラート」節を追加し、原因分析・閉じるのトリガー文とレスポンス例を文書化。あわせて、アラート吹き出し自体はAPIを経由しないフロントエンド生成である旨を明記する
 
 ### 変更なし（明示）
 
-- `backend/src/main/java/com/example/chatbackend/ChatController.java` / `MockChatService.java` / `UiComponent.java` / 各 `*Component.java` / `ChatResponse.java`
-- `frontend/src/api/chatApi.ts` / `frontend/src/types/chat.ts` / `frontend/src/stores/conversationStore.ts`
-- `frontend/vite.config.ts`（`/api` プレフィックスの既存プロキシ設定が `/api/monitoring/snapshot` にもそのまま適用されるため変更不要）
+- `backend/src/main/java/com/example/chatbackend/ChatController.java` / `ChatResponse.java` / `UiComponent.java` / 各既存`*Component.java` / `MonitoringController.java` / `MonitoringMetricsService.java`
+- `frontend/src/api/chatApi.ts` / `frontend/src/api/monitoringApi.ts` / `frontend/src/types/chat.ts` / `frontend/src/types/monitoring.ts` / `frontend/src/components/TopologyDiagram.vue` / `frontend/src/components/ChatWindow.vue` / `frontend/src/components/MessageBubble.vue` / `frontend/src/components/ChoicesView.vue` / `frontend/src/components/MessageInput.vue`（新規UIコンポーネント型を追加しないため、描画層・検証層は無改修で成立する）
 
 ## 詳細設計
 
-### 新API: `GET /api/monitoring/snapshot`
+### `frontend/src/constants/monitoringAlert.ts`（新規）
 
-リクエストボディなし。常に200・`MonitoringSnapshot` を返す（チャットAPIと異なり検証エラーで4xxになるケースはない＝GETでパラメータを取らないため）。
+```ts
+export type AlertSeverity = 'warning' | 'danger'
 
-```
-MonitoringSnapshot
-{
-  "nodes": MonitoringNode[],
-  "edges": MonitoringEdge[]
+export interface MonitoringAlert {
+  nodeId: string
+  nodeLabel: string
+  metric: 'cpu' | 'memory'
+  metricLabel: 'CPU' | 'メモリ'
+  value: number
+  severity: AlertSeverity
 }
 
-MonitoringNode
-{
-  "id": string,             // 例: "web-1"
-  "label": string,          // 表示名。例: "Web-1"
-  "cpuPercent": number,     // 0〜100
-  "memoryPercent": number   // 0〜100
-}
+// このアラート機能専用のしきい値（constants/monitoring.tsの色分けしきい値とは別軸）
+export const ALERT_WARNING_THRESHOLD = 80
+export const ALERT_DANGER_THRESHOLD = 90
 
-MonitoringEdge
-{
-  "id": string,             // 例: "lb-web1"
-  "sourceId": string,       // MonitoringNode.id を参照
-  "targetId": string,       // MonitoringNode.id を参照
-  "bandwidthPercent": number // 0〜100
-}
-```
+export const CAUSE_ANALYSIS_KEYWORD = '使用率が高い原因を教えて'
+export const CLOSE_ALERT_LABEL = '閉じる'
 
-固定トポロジー（9ノード・12エッジ、設計時に確定）:
-
-| id | label | 階層 | baseline CPU | baseline Memory |
-|---|---|---|---|---|
-| `internet` | Internet | 0 | 20 | 15 |
-| `lb` | LB | 1 | 35 | 30 |
-| `web-1` | Web-1 | 2 | 40 | 45 |
-| `web-2` | Web-2 | 2 | 40 | 45 |
-| `app-1` | App-1 | 3 | 45 | 50 |
-| `app-2` | App-2 | 3 | 45 | 50 |
-| `cache` | Cache | 4 | 30 | 55 |
-| `db-primary` | DB Primary | 4 | 50 | 60 |
-| `db-replica` | DB Replica | 5 | 35 | 55 |
-
-| id | source → target | baseline bandwidth |
-|---|---|---|
-| `internet-lb` | internet → lb | 30 |
-| `lb-web1` | lb → web-1 | 35 |
-| `lb-web2` | lb → web-2 | 35 |
-| `web1-app1` | web-1 → app-1 | 30 |
-| `web1-app2` | web-1 → app-2 | 20 |
-| `web2-app1` | web-2 → app-1 | 20 |
-| `web2-app2` | web-2 → app-2 | 30 |
-| `app1-cache` | app-1 → cache | 25 |
-| `app2-cache` | app-2 → cache | 25 |
-| `app1-dbprimary` | app-1 → db-primary | 30 |
-| `app2-dbprimary` | app-2 → db-primary | 30 |
-| `dbprimary-dbreplica` | db-primary → db-replica | 40 |
-
-Web×2→App×2 はフルメッシュ（4本）とし、単純な1対1接続よりもエッジ本数を増やしてボトルネック表現のデモ効果を高める。
-
-### バックエンドクラス設計
-
-- `MonitoringNode(String id, String label, double cpuPercent, double memoryPercent)` — record、`UiComponent` 系とは無関係の独立DTO（判別共用体不要）。
-- `MonitoringEdge(String id, String sourceId, String targetId, double bandwidthPercent)` — record。
-- `MonitoringSnapshot(List<MonitoringNode> nodes, List<MonitoringEdge> edges)` — record。
-- `MonitoringController`: `@RestController`。コンストラクタで `MonitoringMetricsService` をDI。
-
-  ```java
-  @GetMapping("/api/monitoring/snapshot")
-  public MonitoringSnapshot snapshot() {
-      return monitoringMetricsService.getSnapshot();
+export function buildAlertReplyText(alert: MonitoringAlert): string {
+  const value = Math.round(alert.value)
+  if (alert.severity === 'danger') {
+    return `${alert.nodeLabel} の${alert.metricLabel}使用率が${value}%（危険水準）に達しました。原因を確認しますか？`
   }
-  ```
+  return `${alert.nodeLabel} の${alert.metricLabel}使用率が${value}%（警告水準）です。念のため原因を確認しますか？`
+}
 
-- `MonitoringMetricsService`: `@Service`（シングルトンBean。インスタンスフィールドとして状態を保持する＝チャット機能のステートレス方針の明示的な例外。サーバ再起動でリセットされてよい旨をクラスコメントに明記する）。
+export function buildCauseAnalysisChoiceLabel(alert: MonitoringAlert): string {
+  return `${alert.nodeLabel}の${alert.metricLabel}${CAUSE_ANALYSIS_KEYWORD}`
+}
+```
 
-  内部状態（コンストラクタで baseline から初期化）:
-  - `Map<String, MetricState> nodeCpuStates`, `Map<String, MetricState> nodeMemoryStates`, `Map<String, MetricState> edgeBandwidthStates`（`MetricState` は current値・baseline値を保持する小さな可変クラス、またはプリミティブ配列で代用可）
-  - スパイク管理用の単一状態: `String activeSpikeTargetKey`（null可）、`Instant spikeEndsAt`、`Instant nextSpikeEligibleAt`
+（当初のdangerのみ設計を要件定義Q10で2段階化。原因分析の選択肢文言・バックエンド分岐は重大度によらずメトリクス種別のみで判定するため変更なし）
 
-  定数（すべて `private static final`。要件の未決定事項の推奨仮置き値を採用）:
-  - `RANDOM_WALK_STEP = 3.0`（1ティックあたりの最大変動幅）
-  - `MEAN_REVERSION_FACTOR = 0.05`（baselineへ緩やかに回帰させ、値が0/100付近に張り付き続けるのを防ぐ）
-  - `SPIKE_MEAN_INTERVAL_TICKS = 12`（5秒ポーリング前提で12ティック≒60秒に1回）
-  - `SPIKE_INTERVAL_JITTER_TICKS = 6`（次スパイクまでの間隔を `6〜18` ティック＝30〜90秒の一様乱数とし、平均60秒を実現）
-  - `SPIKE_DURATION_TICKS = 3`（5秒×3＝15秒間持続）
-  - `SPIKE_PEAK_MIN = 78.0`, `SPIKE_PEAK_MAX = 98.0`（警戒/危険域に達するピーク値の範囲）
-  - `SPIKE_DECAY_FACTOR = 0.4`（スパイク終了後、`current = current - (current - baseline) * DECAY_FACTOR` を毎ティック適用し数ティックでbaseline付近まで戻す）
+`CAUSE_ANALYSIS_KEYWORD`をフロントの定数として1箇所に定義し、バックエンド（`MockChatService`）の同名キーワード文字列（Java側の定数）と値を一致させる。両者は言語をまたぐため自動同期はできないが、コメントで対応関係を明記する（リスク節参照）。
 
-  `public synchronized MonitoringSnapshot getSnapshot()` の処理（1回の呼び出し＝1ティック。`synchronized` は将来的な並行リクエストに備えた保険）:
-  1. スパイクが有効かつ `now >= spikeEndsAt` なら `activeSpikeTargetKey = null` にして減衰フェーズへ移行（対象は「減衰中」フラグを別途持つ、または単純に「スパイク対象ではなくなった直後は `current` がbaselineより十分離れているので、通常のランダムウォーク＋平均回帰だけでも数ティックでbaseline付近に戻る」設計とし、専用の減衰フェーズは持たず `MEAN_REVERSION_FACTOR` を流用してもよい。ただし観測性を優先し、スパイク終了直後のみ `SPIKE_DECAY_FACTOR` による強めの回帰を1〜2ティック適用する設計とする）。
-  2. スパイクが無効かつ `now >= nextSpikeEligibleAt` なら、全ノードの cpu/memory 系列と全エッジの bandwidth 系列（合計 `9*2 + 12 = 30` 系列）から一様乱数で1つ選び、選んだ系列が属するノードの場合は cpu・memory 両方を同時にスパイク対象にする（ノード枠色は両者の最悪値で決まるため、片方だけだと分かりにくい）。スパイクのピーク値を `SPIKE_PEAK_MIN〜SPIKE_PEAK_MAX` から乱数決定し、`spikeEndsAt` を `SPIKE_DURATION_TICKS` 後に設定、`nextSpikeEligibleAt` を次回分（`SPIKE_MEAN_INTERVAL_TICKS ± SPIKE_INTERVAL_JITTER_TICKS`）に更新する。
-  3. 全系列について、スパイク対象なら現在値をピーク値方向へ強めに寄せる（例: `current += (peak - current) * 0.5` ＋小さなランダムノイズ）、非対象なら通常のランダムウォーク（`current += uniform(-STEP, STEP) + (baseline - current) * MEAN_REVERSION_FACTOR`）を適用し、最後に `clamp(current, 0, 100)` する。
-  4. 更新後の全状態から `MonitoringNode`/`MonitoringEdge` の新規インスタンス一覧を組み立てて `MonitoringSnapshot` として返す（内部の可変Mapをそのまま外部に渡さない＝直列化中の競合を避ける）。
+### `frontend/src/stores/monitoringStore.ts`（変更）
 
-  この設計により「1回の `GET` 呼び出し＝1ティック」という単純化を採用する（バックエンドは実時刻でスケジューリングせず、フロントが5秒間隔でポーリングし続ける限り要件どおりのペースになる）。これは意図的な単純化であり、リスク節に明記する。
-
-### フロントエンド構成
-
-- `types/monitoring.ts`: `MonitoringNode` / `MonitoringEdge` / `MonitoringSnapshot` インターフェース（バックエンドのJSON構造とフィールド名を一致させる）。
-- `api/monitoringApi.ts`: `chatApi.ts` と同一方針・同一構造。
-  - `export class MonitoringResponseFormatError extends Error {}`
-  - `isValidMonitoringNode(value): value is MonitoringNode`（`id`/`label` が string、`cpuPercent`/`memoryPercent` が finite number）
-  - `isValidMonitoringEdge(value): value is MonitoringEdge`（`id`/`sourceId`/`targetId` が string、`bandwidthPercent` が finite number）
-  - `validateMonitoringSnapshot(value): MonitoringSnapshot`（`nodes`/`edges` が配列であること・各要素が上記を満たすことを検証。値域(0〜100)チェックは既存 `chatApi.ts` の数値検証（`bar_chart.values` 等）が範囲チェックをしていないことに合わせ、本APIでも型・有限性のみ検証し範囲チェックはしない）
-  - `export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot>`（`fetch('/api/monitoring/snapshot')`、`!response.ok` は `Error`、それ以外は `validateMonitoringSnapshot`）
-- `constants/monitoring.ts`:
-  ```ts
-  export const WARNING_THRESHOLD = 70
-  export const DANGER_THRESHOLD = 90
-  export const POLL_INTERVAL_MS = 5000
-  export type MonitoringLevel = 'normal' | 'warning' | 'danger'
-  export function getMonitoringLevel(value: number): MonitoringLevel { ... }
-  ```
-- `constants/monitoringLayout.ts`: `NODE_WIDTH`/`NODE_HEIGHT`/`VIEWBOX_WIDTH`/`VIEWBOX_HEIGHT` と `NODE_POSITIONS: Record<string, { x: number; y: number }>`（下記「SVGレイアウトの座標方針」の値をそのまま定数化）。
-- `stores/monitoringStore.ts`（Pinia、`conversationStore.ts` と同じ Options API 形式に合わせる）:
-  ```ts
-  state: () => ({
-    activeScreen: 'chat' as 'chat' | 'monitoring',
-    snapshot: null as MonitoringSnapshot | null,
-    lastUpdatedAt: null as number | null,
-    hasError: false,
-    pollTimerId: null as number | null,
-  }),
-  actions: {
-    showMonitoring() { this.activeScreen = 'monitoring' },
-    showChat() { this.activeScreen = 'chat' },
-    startPolling() {
-      if (this.pollTimerId !== null) return   // 二重登録防止
-      this.fetchSnapshot()                    // 表示開始時に即座取得（FR-7）
-      this.pollTimerId = window.setInterval(() => this.fetchSnapshot(), POLL_INTERVAL_MS)
-    },
-    stopPolling() {
-      if (this.pollTimerId !== null) {
-        window.clearInterval(this.pollTimerId)
-        this.pollTimerId = null
-      }
-    },
-    async fetchSnapshot() {
-      try {
-        this.snapshot = await getMonitoringSnapshot()
-        this.lastUpdatedAt = Date.now()
-        this.hasError = false
-      } catch {
-        this.hasError = true               // snapshot は書き換えない＝直前データ維持（FR-9）
-      }
-    },
+```ts
+state: () => ({
+  // ...既存...
+  alertedNodeIds: new Set<string>(),
+  pendingAlert: null as MonitoringAlert | null,
+}),
+actions: {
+  // ...既存...
+  async fetchSnapshot() {
+    // ...既存の成功パスの最後に追加...
+    this.snapshot = snapshot
+    this.lastUpdatedAt = Date.now()
+    this.hasError = false
+    this.updateAlertState(snapshot)
+    // ...
   },
-  ```
-- `components/MonitoringView.vue`: `onMounted(() => store.startPolling())` / `onUnmounted(() => store.stopPolling())` でポーリングのライフサイクルを一本化。テンプレートはタイトル・`最終更新: HH:mm:ss`（`store.lastUpdatedAt` を `Date` から整形。初回未取得時は `--:--:--`）・エラーバナー（`hasError && snapshot` の場合のみ表示、直前データのSVGは表示したまま）・初回取得失敗時の全面エラー表示（`hasError && !snapshot`）・`TopologyDiagram`（`snapshot` がある場合のみ）を条件描画する。
-- `components/TopologyDiagram.vue`: `props: { snapshot: MonitoringSnapshot }`。`NODE_POSITIONS` にIDが存在しないノード/エッジは描画をスキップする（クラッシュ防止の防御的実装。詳細はリスク節）。ノードは `getMonitoringLevel(Math.max(cpuPercent, memoryPercent))` で枠色を決定、CPU・メモリそれぞれのミニゲージ（幅=値/100の`<rect>`、色は各値独自の `getMonitoringLevel`）と数値ラベルを表示。エッジは `getMonitoringLevel(bandwidthPercent)` で線色を決定し中間点に%ラベルを表示。SVGの重なり順は「エッジの`<g>`を先に描画→ノードの`<g>`を後に描画」とし、エッジの端点は各ノード矩形の中心座標で単純に結び、ノード矩形がその上に重なることで視覚的に矩形境界から線が出ているように見せる（複雑な交点計算をしない）。色は `normal→emerald-500`, `warning→amber-500`, `danger→rose-500`（`dark:` バリアント併用、既存 `TrendChartView.vue` の `rose-500` 平均線と統一感のある配色）。
+  updateAlertState(snapshot: MonitoringSnapshot) {
+    for (const node of snapshot.nodes) {
+      const worst = Math.max(node.cpuPercent, node.memoryPercent)
+      if (worst < DANGER_THRESHOLD) {
+        this.alertedNodeIds.delete(node.id)
+        continue
+      }
+      if (this.alertedNodeIds.has(node.id) || this.pendingAlert !== null) {
+        continue
+      }
+      this.alertedNodeIds.add(node.id)
+      const metric: 'cpu' | 'memory' =
+        node.memoryPercent > node.cpuPercent ? 'memory' : 'cpu'
+      this.pendingAlert = {
+        nodeId: node.id,
+        nodeLabel: node.label,
+        metric,
+        metricLabel: metric === 'cpu' ? 'CPU' : 'メモリ',
+        value: metric === 'cpu' ? node.cpuPercent : node.memoryPercent,
+      }
+    }
+  },
+  consumePendingAlert() {
+    this.pendingAlert = null
+  },
+},
+```
 
-### SVGレイアウトの座標方針
+`updateAlertState`はノード配列を先頭から走査するため、「1回のスナップショットで複数ノードが同時に閾値超過していた場合、最初の1件のみ通知する」（要件定義AC-6）は「ループ中に`pendingAlert`が埋まった時点で以降のノードはスキップされる」ことで自然に満たされる。`alertedNodeIds.add`は`pendingAlert`が空いている場合のみ行われるため、通知されなかったノードは次回以降のポーリングでも再判定対象のままになる（クールダウン未開始）。
 
-`viewBox="0 0 960 480"`。ノード矩形サイズ `NODE_WIDTH=140, NODE_HEIGHT=76`。列（階層）ごとにx座標を固定し、同一列内の複数ノードはy座標で振り分ける（列中央基準）。
+`DANGER_THRESHOLD`は既存の`frontend/src/constants/monitoring.ts`からimportする。
 
-| id | x（矩形左上） | y（矩形左上） |
-|---|---|---|
-| `internet` | 20 | 202 |
-| `lb` | 180 | 202 |
-| `web-1` | 340 | 60 |
-| `web-2` | 340 | 344 |
-| `app-1` | 500 | 60 |
-| `app-2` | 500 | 344 |
-| `cache` | 660 | 60 |
-| `db-primary` | 660 | 344 |
-| `db-replica` | 820 | 202 |
+### `frontend/src/stores/conversationStore.ts`（変更）
 
-`width="100%"` + `viewBox` のみでスケーリングし、`preserveAspectRatio` はデフォルト（`xMidYMid meet`）のまま固定座標レイアウトを維持する。エッジの座標はAPIレスポンスの `sourceId`/`targetId` を上記マップで引いた中心点同士を結ぶことで導出し、バックエンドは座標を一切持たない。
+```ts
+createAlertConversation(replyText: string, choiceOptions: string[]) {
+  this.createConversation()
+  const conversation = this.activeConversation
+  if (!conversation) {
+    return
+  }
+  conversation.title = replyText.slice(0, TITLE_MAX_LENGTH)
+  conversation.messages.push(
+    createMessage('assistant', replyText, [
+      { type: 'choices', options: choiceOptions },
+    ]),
+  )
+},
+```
+
+既存の`createMessage`ヘルパー・`TITLE_MAX_LENGTH`・`Conversation`/`Message`型をそのまま再利用する。`isLoading`は変更しない（バックエンド通信がないため）。既存の`isInputLocked`ゲッター（最新メッセージがassistant＋choices持ちなら入力欄無効化）はこのメッセージに対してもそのまま機能する。
+
+### `frontend/src/components/MonitoringView.vue`（変更）
+
+```vue
+<script setup lang="ts">
+import { useConversationStore } from '../stores/conversationStore'
+import {
+  buildAlertReplyText,
+  buildCauseAnalysisChoiceLabel,
+  CLOSE_ALERT_LABEL,
+} from '../constants/monitoringAlert'
+
+const conversationStore = useConversationStore()
+
+function handleAlertBannerClick() {
+  const alert = store.pendingAlert
+  if (!alert) {
+    return
+  }
+  conversationStore.createAlertConversation(buildAlertReplyText(alert), [
+    buildCauseAnalysisChoiceLabel(alert),
+    CLOSE_ALERT_LABEL,
+  ])
+  store.consumePendingAlert()
+  store.showChat()
+}
+</script>
+```
+
+テンプレートに`v-if="store.pendingAlert"`のバナー（`buildAlertReplyText(store.pendingAlert)`相当の文言＋クリック領域）を、既存のエラーバナーと同じ位置（タイトル行の下、`TopologyDiagram`の上）に追加する。`pendingAlert.severity`に応じて配色を切り替える（danger→`rose`系、warning→`amber`系。トポロジー図の枠色・ゲージ色と同じ配色ルールに統一）ことで、重大度を視覚的に区別する。
+
+### `backend/src/main/java/com/example/chatbackend/MockChatService.java`（変更）
+
+```java
+private static final String CAUSE_ANALYSIS_KEYWORD = "使用率が高い原因を教えて";
+private static final String CPU_METRIC_KEYWORD = "CPU";
+private static final String MEMORY_METRIC_KEYWORD = "メモリ";
+private static final String CLOSE_ALERT_LABEL = "閉じる";
+
+public ChatResponse generateResponse(String message) {
+    ChatResponse inquiryResponse = inquiryFlowResponse(message);
+    if (inquiryResponse != null) {
+        return inquiryResponse;
+    }
+    ChatResponse alertResponse = alertFlowResponse(message);
+    if (alertResponse != null) {
+        return alertResponse;
+    }
+    // ...既存の日別/担当/カテゴリ/フォールバック判定...
+}
+
+private ChatResponse alertFlowResponse(String message) {
+    if (message.contains(CAUSE_ANALYSIS_KEYWORD)) {
+        if (message.contains(CPU_METRIC_KEYWORD)) {
+            return cpuCauseAnalysis();
+        }
+        if (message.contains(MEMORY_METRIC_KEYWORD)) {
+            return memoryCauseAnalysis();
+        }
+    }
+    if (message.equals(CLOSE_ALERT_LABEL)) {
+        return alertClosed();
+    }
+    return null;
+}
+
+private ChatResponse cpuCauseAnalysis() {
+    TableComponent table = new TableComponent(
+            List.of("プロセス", "CPU使用率"),
+            List.of(
+                    List.of("batch-worker", "42%"),
+                    List.of("api-server", "28%"),
+                    List.of("log-agent", "15%"),
+                    List.of("other", "7%")));
+    BarChartComponent barChart = new BarChartComponent(
+            "プロセス別 CPU使用率",
+            List.of("batch-worker", "api-server", "log-agent", "other"),
+            List.of(42.0, 28.0, 15.0, 7.0));
+    return new ChatResponse(
+            "直近のCPU使用率上昇の要因を分析しました。バッチ処理プロセスの負荷が主な要因です。",
+            List.of(table, barChart));
+}
+
+private ChatResponse memoryCauseAnalysis() {
+    TableComponent table = new TableComponent(
+            List.of("プロセス", "メモリ使用率"),
+            List.of(
+                    List.of("cache-layer", "38%"),
+                    List.of("api-server", "25%"),
+                    List.of("session-store", "19%"),
+                    List.of("other", "10%")));
+    BarChartComponent barChart = new BarChartComponent(
+            "プロセス別 メモリ使用率",
+            List.of("cache-layer", "api-server", "session-store", "other"),
+            List.of(38.0, 25.0, 19.0, 10.0));
+    return new ChatResponse(
+            "直近のメモリ使用率上昇の要因を分析しました。キャッシュ層のメモリ消費増加が主な要因です。",
+            List.of(table, barChart));
+}
+
+private ChatResponse alertClosed() {
+    return new ChatResponse("承知しました。", List.of());
+}
+```
+
+`CAUSE_ANALYSIS_KEYWORD`の文字列値（`"使用率が高い原因を教えて"`）はフロントエンドの`monitoringAlert.ts`の`CAUSE_ANALYSIS_KEYWORD`と一致させる。`CLOSE_ALERT_LABEL`の値（`"閉じる"`）も同様。
+
+判定順序: `inquiryFlowResponse`（新規問い合わせフロー）→`alertFlowResponse`（本機能）→日別→担当→カテゴリ／種別→フォールバック。既存キーワード（担当・カテゴリ・種別・日別・カテゴリ:/緊急度:/登録する/やり直す/キャンセル）と本機能の新規キーワード（使用率が高い原因を教えて・CPU・メモリ・閉じる）に文字列としての重複はないため、この順序自体は判定結果に影響しないが、既存の`inquiryFlowResponse`優先という設計コメントに倣い、新規フローも独立した優先チェックとして明示的に配置する。
 
 ## Implementation steps
 
-1. **バックエンド: DTO＋メトリクス生成サービス**。`MonitoringNode`/`MonitoringEdge`/`MonitoringSnapshot` レコードと `MonitoringMetricsService`（固定トポロジー・ランダムウォーク・周期スパイク）を実装。`MonitoringMetricsServiceTest` を新規作成し、(a) `getSnapshot()` の初回呼び出しでノード9件・エッジ12件・全メトリクスが `[0, 100]` に収まること（AC-1相当）、(b) 連続呼び出し（例: 30回程度ループ）で少なくとも1系列は値が変化すること、かつ全呼び出しを通じて値域が常に `[0, 100]` に収まること（AC-2相当）を検証。
-   検証: `cd backend && ./mvnw test -Dtest=MonitoringMetricsServiceTest`
+1. **バックエンド: 応答分岐の追加**。`MockChatService`に`alertFlowResponse`・`cpuCauseAnalysis`・`memoryCauseAnalysis`・`alertClosed`を追加し、`generateResponse`に組み込む。`MockChatServiceTest`に以下のテストケースを追加: (a) 「Web-1のCPU使用率が高い原因を教えて」→CPU分析データ、(b) 「DB Primaryのメモリ使用率が高い原因を教えて」→メモリ分析データ、(c) 「閉じる」→終了メッセージ・components空、(d) 既存の担当/カテゴリ/日別/新規問い合わせ系のテストが引き続きグリーンであること（回帰確認）。
+   検証: `cd backend && ./mvnw test -Dtest=MockChatServiceTest`、続けて `./mvnw test`（全件）
 
-2. **バックエンド: コントローラ**。`MonitoringController`（`GET /api/monitoring/snapshot`）を追加。`MonitoringControllerTest`（`@SpringBootTest` + `MockMvc`）を新規作成し、200応答・`$.nodes`/`$.edges` のサイズと代表フィールドの型を `jsonPath` で確認。既存の `ChatControllerTest`・`MockChatServiceTest` が引き続きグリーンであることも合わせて確認（新規Beanの追加でSpringコンテキスト起動が壊れていないことの回帰確認）。
-   検証: `cd backend && ./mvnw test`（全テストがグリーン）
+2. **フロントエンド: アラート文言ヘルパー**。`frontend/src/constants/monitoringAlert.ts`を新規作成（`MonitoringAlert`型・`buildAlertReplyText`・`buildCauseAnalysisChoiceLabel`・`CAUSE_ANALYSIS_KEYWORD`・`CLOSE_ALERT_LABEL`）。
+   検証: `cd frontend && npx vue-tsc -b`
 
-3. **APIスキーマのドキュメント化**。`docs/monitoring-response-schema.md` を新規作成し、上記「新API」節の内容（エンドポイント・フィールド一覧・トポロジー表）を記述する。
-   検証: レビューのみ（自動検証なし。実際に起動したバックエンドへ `curl http://localhost:8080/api/monitoring/snapshot` して記載内容と一致することを目視確認）
-
-4. **フロントエンド: 型・定数・APIクライアント**。`types/monitoring.ts`・`constants/monitoring.ts`・`constants/monitoringLayout.ts`・`api/monitoringApi.ts` を新規作成。
-   検証: `cd frontend && npx vue-tsc -b`（型エラーなし。lessons-learned に基づき bare `vue-tsc --noEmit` は使わない）
-
-5. **フロントエンド: モニタリングストア**。`stores/monitoringStore.ts` を新規作成（`activeScreen`/`snapshot`/`lastUpdatedAt`/`hasError`/`pollTimerId` の状態と `showMonitoring`/`showChat`/`startPolling`/`stopPolling`/`fetchSnapshot` アクション）。
+3. **フロントエンド: 検知ロジック**。`monitoringStore.ts`に`alertedNodeIds`/`pendingAlert`状態と`updateAlertState`/`consumePendingAlert`アクションを追加し、`fetchSnapshot`成功パスから呼び出す。
    検証: `npx vue-tsc -b`
 
-6. **フロントエンド: 構成図描画コンポーネント**。`components/TopologyDiagram.vue`（SVG描画・3段階色分け・ミニゲージ）と `components/MonitoringView.vue`（タイトル・最終更新時刻・エラーバナー/全面エラー・ポーリングのライフサイクル）を新規作成。この時点ではまだサイドバー/App.vueから到達できないため、一時的に `App.vue` で `<MonitoringView />` を直接描画する等して単体で見た目を確認してもよい（後続ステップで正式な切替に置き換える）。
-   検証: `npx vue-tsc -b` に加え、`cd backend && ./mvnw spring-boot:run` と `cd frontend && npm run dev` を起動し、ブラウザで構成図・ゲージ・数値・枠色/線色が表示されることを目視確認（AC-3前半）
+4. **フロントエンド: アラート会話生成アクション**。`conversationStore.ts`に`createAlertConversation`を追加。
+   検証: `npx vue-tsc -b`
 
-7. **フロントエンド: 画面切替の結線**。`App.vue`（`monitoringStore.activeScreen` による条件描画）・`Sidebar.vue`（「システムモニタリング」ボタン追加＋既存4操作ハンドラの先頭に `monitoringStore.showChat()` を追加）を変更。ステップ6の暫定描画があれば削除する。
-   検証: `npx vue-tsc -b` かつ `npm run build`（lessons-learnedの教訓どおり最終的に本番ビルドも通ることを確認）。手動確認: サイドバーのボタンで画面が切り替わること、チャットに戻ると会話がそのまま残っていること（AC-3全体）、モニタリング画面表示中のみDevToolsのNetworkタブに `/api/monitoring/snapshot` が出ること（AC-7）
+5. **フロントエンド: バナーUIと画面遷移**。`MonitoringView.vue`にバナーの条件描画とクリックハンドラを追加。
+   検証: `npx vue-tsc -b` に加え、バックエンド・フロントエンドを起動し、`MonitoringMetricsService`のスパイク間隔を一時的に短縮（`SPIKE_MEAN_INTERVAL_TICKS`等）して異常発生を早め、バナー表示→クリック→チャット遷移→アラート吹き出し表示までを目視確認（確認後は既定値に戻す）
 
-8. **結合の手動受け入れ確認（AC-4, AC-5, AC-6, AC-8）**。バックエンド・フロントエンドを起動した状態で以下を確認する。
-   - AC-4: モニタリング画面を数十秒開いたままにし、5秒ごとに数値・ゲージ・最終更新時刻がページリロードなしに更新されることを確認。
-   - AC-5: 数分間観察し、いずれかのノード枠またはエッジがいったん黄（70%以上）または赤（90%以上）に変化し、その後正常色（緑）に戻ることを確認。時間がかかる場合は `MonitoringMetricsService` の `SPIKE_MEAN_INTERVAL_TICKS`/`SPIKE_DURATION_TICKS` を一時的に小さくして確認を早めてよい（確認後は既定値に戻す）。
-   - AC-6: モニタリング画面表示中にバックエンドプロセスを停止し、直前の図が維持されたままエラーバナーが表示されることを確認。バックエンドを再起動し、次のポーリング成功時にバナーが消えて更新が再開することを確認。
-   - AC-8: `MonitoringMetricsService`（または一時的な検証用エンドポイント／ブラウザDevToolsのローカルオーバーライド機能）で応答から必須フィールド（例: `nodes[0].cpuPercent`）を一時的に欠落させ、フロントエンドがクラッシュせずエラー表示（バナーまたは全面エラー）になることを確認する。確認後は元に戻す。
+6. **結合の手動受け入れ確認**。要件定義のAC-1〜AC-9を一通り手動確認する。特にAC-3（原因分析）・AC-4（閉じる）はクリックして応答を確認、AC-5（クールダウン）・AC-6（複数同時）はスパイク間隔短縮下で確認する。
+
+7. **ドキュメント更新**。`docs/chat-response-schema.md`に「シナリオF: モニタリング連携アラート」を追記。
+   検証: レビューのみ（実際に`curl`等でバックエンドの応答を確認し記載内容と一致させる）
+
+8. **ビルド確認**。`cd frontend && npm run build`（lessons-learnedの教訓どおり最終的に本番ビルドも通ることを確認）。
 
 ## Risks / edge cases
 
-- **「1回のGET呼び出し＝1ティック」という単純化**: バックエンドは実時刻ベースのスケジューラを持たず、フロントの5秒ポーリング頻度に依存してスパイクの体感ペース（平均60秒に1回・15秒持続）が決まる設計とした。手動テストやデバッグ目的で `curl` 等を高頻度・低頻度で叩くと、要件文の秒数どおりのペースにはならない（AC-2は自動テストで値の変動と値域のみを検証しており時間軸は検証対象外なので問題ないが、AC-5の手動確認は実際にフロントの5秒ポーリング経由で行うこと）。
-- **バックエンドの状態共有と並行アクセス**: `MonitoringMetricsService` はSpringのシングルトンBeanでミュータブルな状態を持つ（チャット機能のステートレス方針の明示的例外）。複数タブ・複数ユーザーが同時にポーリングした場合、全員が同じグローバルな乱数系列・スパイクを共有する（本デモの想定内。個別セッションごとの状態分離はスコープ外）。`getSnapshot()` は `synchronized` とし、同時リクエストによる状態破壊を防ぐ。
-- **ノードID不整合**: バックエンドのトポロジー定義（`MonitoringMetricsService`）とフロントの座標定義（`constants/monitoringLayout.ts`）は独立したハードコードであり、片方だけを変更すると描画が崩れる。`TopologyDiagram.vue` は未知のノードID/エッジIDを検出したら例外を投げずに黙ってスキップする防御的実装とし、クラッシュは避けるが表示欠落には気づきにくい。トポロジーを変更する際は両ファイルを必ず同時に更新することをコード上のコメントで明記する。
-- **値のクランプ**: ランダムウォーク＋平均回帰＋スパイクの組み合わせで丸め誤差により `0` 未満や `100` 超になり得るため、必ず最終ステップで `clamp(0, 100)` を適用すること。特にスパイクのピーク方向への強い補正とランダムノイズの組み合わせ箇所で範囲外に出ないことをテストで担保する（実装ステップ1のテストで担保）。
-- **色の判別性（非機能要件）**: ライト/ダーク両テーマで `emerald-500`/`amber-500`/`rose-500`（`dark:` バリアント込み）が判別できることを手動確認する。色だけに依存しないよう、ゲージ・数値ラベルを必ず併記する設計になっていることを実装時に崩さないこと。
-- **既存チャット機能への影響ゼロの担保**: `ChatController`/`MockChatService`/`UiComponent`/`chatApi.ts`/`chat.ts`/`conversationStore.ts` は変更しない設計だが、`@SpringBootTest` を使う `ChatControllerTest` は同一Springコンテキストで新規Bean（`MonitoringController`/`MonitoringMetricsService`）も起動対象になる。新規Beanの初期化が失敗するとチャット側のテストも巻き添えで失敗するため、ステップ2で `./mvnw test`（全テスト）を必ず実行し回帰がないことを確認する。
-- **ポーリングの二重登録・リーク**: `startPolling()` は `pollTimerId !== null` を必ずガードし、`stopPolling()` は `MonitoringView.vue` の `onUnmounted` で確実に呼ばれる設計とする。将来的にモニタリング画面表示中にブラウザタブを閉じる/リロードするケースはブラウザ側がタイマーを破棄するため考慮不要（Non-goalsの「タブ非表示時の停止」は対象外のまま）。
+- **フロント・バックエンド間のキーワード文字列の二重管理**: `CAUSE_ANALYSIS_KEYWORD`（`"使用率が高い原因を教えて"`）と`CLOSE_ALERT_LABEL`（`"閉じる"`）は、TypeScript側（`monitoringAlert.ts`）とJava側（`MockChatService.java`）にそれぞれ定数として定義する。既存の新規問い合わせフローも同様の二重管理（フロントの`INQUIRY_TRIGGER`とバックエンドの`INQUIRY_TRIGGER`定数）を行っており、本プロジェクトが許容している既存パターンに従う。値を変更する際は両ファイルを同時に更新する必要があることをコード上のコメントで明記する。
+- **クールダウン状態の永続性**: `alertedNodeIds`/`pendingAlert`は`monitoringStore`のメモリ内状態であり、`conversationStore`と異なりlocalStorageに永続化しない。ページリロードで消える（既存のモニタリング機能自体がリロードでリセットされる設計に揃えている）。
+- **同一ノードでCPU・メモリ両方が閾値超過した場合の取りこぼし**: `updateAlertState`は「値が大きい方」のみを主対象メトリクスとして通知する（要件定義FR-4）。もう一方のメトリクスも閾値超過中でも別アラートにはならない（そのノードは`alertedNodeIds`に入るため）。ノードが正常域に戻り再度いずれかが閾値超過するまで、そのノードの「もう一方のメトリクス」だけが単独で通知されることもない。これは要件定義で確定済みの仕様（1ノード1アラート）であり意図的な単純化。
+- **バナー放置時の挙動**: `pendingAlert`はユーザーがバナーをクリックするまで保持され続ける（モニタリング画面を離れて戻ってきても再表示される）。その間、新たな別ノードの異常があっても`pendingAlert !== null`により検知がスキップされる（要件定義AC-6の「1件のみ通知」に合致）。ユーザーが長時間バナーを放置すると後続の異常検知が事実上止まる形になるが、要件定義のNon-goalsで集約通知・複数同時通知を対象外としているため許容する。
+- **既存機能への影響**: `MockChatService.generateResponse`の判定チェーン変更により既存シナリオの判定順序が変わるが、キーワードの重複がないため既存の`MockChatServiceTest`・`ChatControllerTest`の結果に影響しないことをステップ1のテスト実行で確認する。
 
 ## Test strategy
 
-- **バックエンド自動テスト（JUnit / AssertJ、既存 `MockChatServiceTest`/`ChatControllerTest` と同じ構成に合わせる）**:
-  - `MonitoringMetricsServiceTest`: トポロジー形状（ノード9件・エッジ12件、エッジの `sourceId`/`targetId` がすべて存在するノードIDであること）、初回スナップショットの全メトリクスが `[0, 100]` に収まること（AC-1）、複数回連続呼び出しで値が変動しつつ常に値域内であること（AC-2）。
-  - `MonitoringControllerTest`: `MockMvc` で `GET /api/monitoring/snapshot` が200を返し、レスポンスJSONの構造（`nodes`/`edges` のサイズ・代表フィールドの型）が期待どおりであること（AC-1のHTTPレベル確認）。
-  - 回帰確認として `./mvnw test` をステップ2以降で必ず全件実行し、既存の `ChatControllerTest`/`MockChatServiceTest`/`ChatBackendApplicationTests` がグリーンのままであることを確認する。
-- **フロントエンド型検証**: 本リポジトリに自動テストランナー（vitest等）は未導入のため、`npx vue-tsc -b`（lessons-learnedの教訓どおり、bareの `vue-tsc --noEmit` は使わない）と最終的な `npm run build` を型・ビルドの唯一の自動チェックとする。各実装ステップの直後に `npx vue-tsc -b` を実行し早期に型不整合を検知する。
-- **手動確認（AC-3〜AC-8）**: `./mvnw spring-boot:run` と `npm run dev`（Viteの `/api` プロキシ経由でバックエンドに到達）を起動した状態で、実装ステップ6〜8に記載した手順に沿って画面切替・ポーリング・色変化・エラーハンドリングを目視確認する。特にAC-7（チャット画面表示中は新APIへのリクエストが発生しない）はブラウザDevToolsのNetworkタブでの確認が必須（自動テスト化しない）。
-- **AC-8（不正応答時のフロントエンドの安全性）の具体的手順**: `MonitoringMetricsService.getSnapshot()` を一時的に改変して必須フィールド（例: `cpuPercent`）を欠いたJSONを返すようにする、またはブラウザDevToolsのローカルオーバーライド機能で `/api/monitoring/snapshot` のレスポンスを一時的に改変し、`monitoringApi.ts` の検証によってフロントエンドがクラッシュせずエラー表示（バナーまたは全面エラー）になることを確認する。確認後は変更を必ず元に戻す。
+- **バックエンド自動テスト（JUnit / AssertJ、既存`MockChatServiceTest`と同じ構成）**: 本設計の「Implementation steps」ステップ1に記載のテストケースを追加。既存全テスト（`./mvnw test`）がグリーンのままであることを回帰確認する。
+- **フロントエンド型検証**: `npx vue-tsc -b`（bareの`vue-tsc --noEmit`は使わない、既存lessons-learnedの教訓どおり）と最終的な`npm run build`。
+- **手動確認**: `./mvnw spring-boot:run`と`npm run dev`を起動し、要件定義のAC-1〜AC-9を確認する。スパイク発生を待つ時間を短縮するため、`MonitoringMetricsService`の`SPIKE_MEAN_INTERVAL_TICKS`/`SPIKE_DURATION_TICKS`を一時的に小さい値に変更して確認し、確認後は既定値に戻す（既存`system-monitoring-view.md`の確認手法を踏襲）。

@@ -29,12 +29,23 @@ public class MockChatService {
 	private static final String CANCEL_LABEL = "キャンセル";
 	private static final String RECEIPT_NUMBER = "INQ-0001";
 
+	// モニタリング連携アラートのキーワード。値は frontend/src/constants/monitoringAlert.ts の
+	// 同名定数と一致させること（言語をまたぐため自動同期はできない）
+	private static final String CAUSE_ANALYSIS_KEYWORD = "使用率が高い原因を教えて";
+	private static final String CPU_METRIC_KEYWORD = "CPU";
+	private static final String MEMORY_METRIC_KEYWORD = "メモリ";
+	private static final String CLOSE_ALERT_LABEL = "閉じる";
+
 	public ChatResponse generateResponse(String message) {
 		// 新規問い合わせフローの定型文は「カテゴリ」等の既存キーワードを含むため、
 		// レポートシナリオより先に判定する
 		ChatResponse inquiryResponse = inquiryFlowResponse(message);
 		if (inquiryResponse != null) {
 			return inquiryResponse;
+		}
+		ChatResponse alertResponse = alertFlowResponse(message);
+		if (alertResponse != null) {
+			return alertResponse;
 		}
 		if (message.contains(DAILY_KEYWORD)) {
 			return dailyTrendScenario();
@@ -178,6 +189,62 @@ public class MockChatService {
 		return new ChatResponse(
 				"『今月の問い合わせ件数を担当者別にまとめて』のように聞いてください。表やグラフでお答えします。",
 				List.of());
+	}
+
+	// モニタリング画面での異常検知アラート（フロントエンド生成）に対する選択肢クリックへの応答。
+	// アラート文・選択肢自体はフロントエンドがローカルで生成するため、ここではキーワードのみで
+	// 判定する（このサービスは監視データを一切知らない）
+	private ChatResponse alertFlowResponse(String message) {
+		if (message.contains(CAUSE_ANALYSIS_KEYWORD)) {
+			if (message.contains(CPU_METRIC_KEYWORD)) {
+				return cpuCauseAnalysis();
+			}
+			if (message.contains(MEMORY_METRIC_KEYWORD)) {
+				return memoryCauseAnalysis();
+			}
+		}
+		if (message.equals(CLOSE_ALERT_LABEL)) {
+			return alertClosed();
+		}
+		return null;
+	}
+
+	private ChatResponse cpuCauseAnalysis() {
+		TableComponent table = new TableComponent(
+				List.of("プロセス", "CPU使用率"),
+				List.of(
+						List.of("batch-worker", "42%"),
+						List.of("api-server", "28%"),
+						List.of("log-agent", "15%"),
+						List.of("other", "7%")));
+		BarChartComponent barChart = new BarChartComponent(
+				"プロセス別 CPU使用率",
+				List.of("batch-worker", "api-server", "log-agent", "other"),
+				List.of(42.0, 28.0, 15.0, 7.0));
+		return new ChatResponse(
+				"直近のCPU使用率上昇の要因を分析しました。バッチ処理プロセスの負荷が主な要因です。",
+				List.of(table, barChart));
+	}
+
+	private ChatResponse memoryCauseAnalysis() {
+		TableComponent table = new TableComponent(
+				List.of("プロセス", "メモリ使用率"),
+				List.of(
+						List.of("cache-layer", "38%"),
+						List.of("api-server", "25%"),
+						List.of("session-store", "19%"),
+						List.of("other", "10%")));
+		BarChartComponent barChart = new BarChartComponent(
+				"プロセス別 メモリ使用率",
+				List.of("cache-layer", "api-server", "session-store", "other"),
+				List.of(38.0, 25.0, 19.0, 10.0));
+		return new ChatResponse(
+				"直近のメモリ使用率上昇の要因を分析しました。キャッシュ層のメモリ消費増加が主な要因です。",
+				List.of(table, barChart));
+	}
+
+	private ChatResponse alertClosed() {
+		return new ChatResponse("承知しました。", List.of());
 	}
 
 }

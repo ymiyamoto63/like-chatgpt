@@ -159,4 +159,44 @@ class MockChatServiceTest {
 		assertThat(response.components()).isEmpty();
 	}
 
+	@Test
+	void cpuAlertCauseQuestionReturnsCpuCauseAnalysis() {
+		ChatResponse response = mockChatService.generateResponse("Web-1のCPU使用率が高い原因を教えて");
+
+		assertThat(response.reply()).isEqualTo("直近のCPU使用率上昇の要因を分析しました。バッチ処理プロセスの負荷が主な要因です。");
+		assertThat(response.components()).hasSize(2);
+
+		TableComponent table = (TableComponent) response.components().get(0);
+		assertThat(table.columns()).containsExactly("プロセス", "CPU使用率");
+
+		BarChartComponent barChart = (BarChartComponent) response.components().get(1);
+		assertThat(barChart.title()).isEqualTo("プロセス別 CPU使用率");
+		assertThat(barChart.labels()).containsExactly("batch-worker", "api-server", "log-agent", "other");
+		assertThat(barChart.values()).containsExactly(42.0, 28.0, 15.0, 7.0);
+	}
+
+	@Test
+	void memoryAlertCauseQuestionReturnsMemoryCauseAnalysis() {
+		ChatResponse response = mockChatService.generateResponse("DB Primaryのメモリ使用率が高い原因を教えて");
+
+		assertThat(response.reply()).isEqualTo("直近のメモリ使用率上昇の要因を分析しました。キャッシュ層のメモリ消費増加が主な要因です。");
+		assertThat(response.components()).hasSize(2);
+
+		TableComponent table = (TableComponent) response.components().get(0);
+		assertThat(table.columns()).containsExactly("プロセス", "メモリ使用率");
+
+		BarChartComponent barChart = (BarChartComponent) response.components().get(1);
+		assertThat(barChart.title()).isEqualTo("プロセス別 メモリ使用率");
+		assertThat(barChart.labels()).containsExactly("cache-layer", "api-server", "session-store", "other");
+		assertThat(barChart.values()).containsExactly(38.0, 25.0, 19.0, 10.0);
+	}
+
+	@Test
+	void closeAlertLabelReturnsAcknowledgementWithNoComponents() {
+		ChatResponse response = mockChatService.generateResponse("閉じる");
+
+		assertThat(response.reply()).isEqualTo("承知しました。");
+		assertThat(response.components()).isEmpty();
+	}
+
 }

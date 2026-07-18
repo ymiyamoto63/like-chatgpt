@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,11 +24,12 @@ public class MonitoringMetricsService {
 
 	private static final double RANDOM_WALK_STEP = 3.0;
 	private static final double MEAN_REVERSION_FACTOR = 0.05;
-	private static final int SPIKE_MEAN_INTERVAL_TICKS = 12;
-	private static final int SPIKE_INTERVAL_JITTER_TICKS = 6;
+	private static final int SPIKE_MEAN_INTERVAL_TICKS = 1;
+	private static final int SPIKE_INTERVAL_JITTER_TICKS = 0;
 	private static final int SPIKE_DURATION_TICKS = 3;
-	private static final double SPIKE_PEAK_MIN = 78.0;
+	private static final double SPIKE_PEAK_MIN = 90.0;
 	private static final double SPIKE_PEAK_MAX = 98.0;
+	private static final double SPIKE_CONVERGENCE_FACTOR = 0.9;
 	private static final double SPIKE_DECAY_FACTOR = 0.4;
 	private static final int SPIKE_END_DECAY_TICKS = 2;
 
@@ -168,7 +170,7 @@ public class MonitoringMetricsService {
 	private void updateState(MetricState state, boolean isSpikeTarget) {
 		if (isSpikeTarget) {
 			double noise = (random.nextDouble() * 2 - 1);
-			state.current += (spikePeak - state.current) * 0.5 + noise;
+			state.current += (spikePeak - state.current) * SPIKE_CONVERGENCE_FACTOR + noise;
 		} else if (state.decayTicksRemaining > 0) {
 			state.current -= (state.current - state.baseline) * SPIKE_DECAY_FACTOR;
 			state.decayTicksRemaining--;

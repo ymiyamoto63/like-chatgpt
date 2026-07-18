@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useMonitoringStore } from '../stores/monitoringStore'
+import { useConversationStore } from '../stores/conversationStore'
+import {
+  buildAlertReplyText,
+  buildCauseAnalysisChoiceLabel,
+  CLOSE_ALERT_LABEL,
+  type AlertSeverity,
+} from '../constants/monitoringAlert'
 import TopologyDiagram from './TopologyDiagram.vue'
 
 const store = useMonitoringStore()
+const conversationStore = useConversationStore()
 
 const lastUpdatedLabel = computed(() => {
   if (store.lastUpdatedAt === null) {
@@ -16,6 +24,34 @@ const lastUpdatedLabel = computed(() => {
     hour12: false,
   })
 })
+
+const alertBannerLabel = computed(() =>
+  store.pendingAlert ? buildAlertReplyText(store.pendingAlert) : '',
+)
+
+const ALERT_BANNER_SEVERITY_CLASS: Record<AlertSeverity, string> = {
+  warning:
+    'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20',
+  danger:
+    'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20',
+}
+
+const alertBannerClass = computed(() =>
+  store.pendingAlert ? ALERT_BANNER_SEVERITY_CLASS[store.pendingAlert.severity] : '',
+)
+
+function handleAlertBannerClick() {
+  const alert = store.pendingAlert
+  if (!alert) {
+    return
+  }
+  conversationStore.createAlertConversation(buildAlertReplyText(alert), [
+    buildCauseAnalysisChoiceLabel(alert),
+    CLOSE_ALERT_LABEL,
+  ])
+  store.consumePendingAlert()
+  store.showChat()
+}
 
 onMounted(() => {
   store.startPolling()
@@ -36,6 +72,17 @@ onUnmounted(() => {
         最終更新: {{ lastUpdatedLabel }}
       </span>
     </div>
+
+    <button
+      v-if="store.pendingAlert"
+      type="button"
+      class="shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition-colors"
+      :class="alertBannerClass"
+      @click="handleAlertBannerClick"
+    >
+      <span class="font-semibold">⚠ {{ alertBannerLabel }}</span>
+      <span class="ml-1 underline">クリックして原因を確認</span>
+    </button>
 
     <div
       v-if="store.hasError && store.snapshot"

@@ -162,5 +162,20 @@ export const useConversationStore = defineStore('conversation', {
       this.createConversation()
       await this.sendMessage(INQUIRY_TRIGGER)
     },
+    // モニタリング画面の異常検知アラートをきっかけに、バックエンド通信なしで
+    // アシスタント発言（アラート文＋選択肢）を新規会話へ直接追加する
+    createAlertConversation(replyText: string, choiceOptions: string[]) {
+      this.createConversation()
+      const conversation = this.activeConversation
+      if (!conversation) {
+        return
+      }
+      conversation.title = replyText.slice(0, TITLE_MAX_LENGTH)
+      conversation.messages.push(
+        createMessage('assistant', replyText, [
+          { type: 'choices', options: choiceOptions },
+        ]),
+      )
+    },
   },
 })
