@@ -6,7 +6,7 @@
 - Commands: (frontend) npm run build / (backend) ./mvnw test
 - [x] 1. requirements（承認済み・pre-refined入力）
 - [x] 2. design
-- [ ] 3. implementation（step 1-3/7: バックエンド完了）
+- [ ] 3. implementation（step 1-4/7: バックエンド・契約文書完了）
 - [ ] 4. testing（retry 0/3）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish
