@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ChatResponseFormatError, postChat } from '../api/chatApi'
+import { loadPersistedState } from './conversationPersistence'
 import type { Conversation, Message, UiComponentSpec } from '../types/chat'
 
 const TITLE_MAX_LENGTH = 20
@@ -47,11 +48,14 @@ function buildInquirySummary(
 }
 
 export const useConversationStore = defineStore('conversation', {
-  state: () => ({
-    conversations: [] as Conversation[],
-    activeConversationId: null as string | null,
-    isLoading: false,
-  }),
+  state: () => {
+    const persisted = loadPersistedState()
+    return {
+      conversations: persisted?.conversations ?? ([] as Conversation[]),
+      activeConversationId: persisted?.activeConversationId ?? null,
+      isLoading: false,
+    }
+  },
   getters: {
     activeConversation(state): Conversation | null {
       return (
@@ -78,6 +82,26 @@ export const useConversationStore = defineStore('conversation', {
     },
     selectConversation(id: string) {
       this.activeConversationId = id
+    },
+    deleteConversation(id: string) {
+      const index = this.conversations.findIndex((c) => c.id === id)
+      if (index === -1) {
+        return
+      }
+      this.conversations.splice(index, 1)
+      if (this.activeConversationId === id) {
+        this.activeConversationId = this.conversations[0]?.id ?? null
+      }
+    },
+    renameConversation(id: string, title: string) {
+      const trimmed = title.trim()
+      if (!trimmed) {
+        return
+      }
+      const conversation = this.conversations.find((c) => c.id === id)
+      if (conversation) {
+        conversation.title = trimmed.slice(0, TITLE_MAX_LENGTH)
+      }
     },
     async sendMessage(content: string) {
       const trimmed = content.trim()

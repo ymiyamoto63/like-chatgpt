@@ -1,10 +1,42 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useConversationStore } from '../stores/conversationStore'
 import { useMonitoringStore } from '../stores/monitoringStore'
 import { REPORT_BUTTONS } from '../constants/reportButtons'
 
 const store = useConversationStore()
 const monitoringStore = useMonitoringStore()
+
+const editingId = ref<string | null>(null)
+const editingTitle = ref('')
+
+function startRename(id: string, currentTitle: string) {
+  editingId.value = id
+  editingTitle.value = currentTitle
+}
+
+// setup内の安定した関数参照を :ref に渡すことで、マウント時に一度だけ呼ばれる
+function focusOnMount(el: unknown) {
+  if (el instanceof HTMLInputElement) {
+    el.focus()
+    el.select()
+  }
+}
+
+function commitRename() {
+  if (editingId.value !== null) {
+    store.renameConversation(editingId.value, editingTitle.value)
+  }
+  editingId.value = null
+}
+
+function cancelRename() {
+  editingId.value = null
+}
+
+function handleDelete(id: string) {
+  store.deleteConversation(id)
+}
 
 function handleNewChat() {
   monitoringStore.showChat()
@@ -67,7 +99,7 @@ function handleShowMonitoring() {
         <li
           v-for="conversation in store.conversations"
           :key="conversation.id"
-          class="cursor-pointer truncate rounded-lg px-3 py-2 text-sm transition-colors"
+          class="group flex cursor-pointer items-center gap-1 rounded-lg px-3 py-2 text-sm transition-colors"
           :class="
             conversation.id === store.activeConversationId
               ? 'bg-violet-100 font-medium text-violet-900 dark:bg-violet-500/15 dark:text-violet-200'
@@ -75,7 +107,38 @@ function handleShowMonitoring() {
           "
           @click="handleSelect(conversation.id)"
         >
-          {{ conversation.title }}
+          <input
+            v-if="editingId === conversation.id"
+            :ref="focusOnMount"
+            v-model="editingTitle"
+            type="text"
+            class="min-w-0 flex-1 rounded border border-violet-400 bg-white px-1 py-0.5 text-sm text-zinc-900 outline-none dark:border-violet-500 dark:bg-zinc-800 dark:text-zinc-100"
+            @click.stop
+            @keydown.enter="commitRename"
+            @keydown.esc="cancelRename"
+            @blur="commitRename"
+          />
+          <template v-else>
+            <span class="min-w-0 flex-1 truncate">{{ conversation.title }}</span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 leading-none text-zinc-400 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-500 dark:hover:text-zinc-200"
+              aria-label="会話名を変更"
+              title="会話名を変更"
+              @click.stop="startRename(conversation.id, conversation.title)"
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 leading-none text-zinc-400 opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100 dark:text-zinc-500 dark:hover:text-red-400"
+              aria-label="会話を削除"
+              title="会話を削除"
+              @click.stop="handleDelete(conversation.id)"
+            >
+              ✕
+            </button>
+          </template>
         </li>
       </ul>
     </div>
