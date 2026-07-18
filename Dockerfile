@@ -6,6 +6,8 @@ WORKDIR /app
 # backendだけコピー（キャッシュ効率UP）
 COPY backend/pom.xml backend/mvnw backend/.mvn /app/
 
+RUN chmod +x mvnw
+
 # 依存ダウンロード
 RUN ./mvnw -B dependency:go-offline
 
