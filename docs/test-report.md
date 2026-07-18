@@ -1,128 +1,190 @@
-# テスト検証レポート: サイドバー定型レポートボタン
+# テストレポート: システム構成図モニタリング画面
 
-対象要件: [docs/requirements/sidebar-report-buttons.md](requirements/sidebar-report-buttons.md)（AC-1〜AC-8）
-対象実装: `frontend/src/constants/reportButtons.ts`（新規）、`frontend/src/stores/conversationStore.ts`（`sendReportPrompt` 追加）、`frontend/src/components/Sidebar.vue`（2セクション化）
+対象要件: `docs/requirements/system-monitoring-view.md`（受け入れ基準 AC-1〜AC-8）
+対象実装: `docs/implementation-notes.md` の「システム構成図モニタリング画面」節（Step 1-3・4-5・6-7）
+検証実施日: 2026-07-18
 
-> 本書は今回の機能（サイドバー定型レポートボタン）に対する検証結果である。前回パイプライン実行分（別機能: 動的UI生成チャット応答）の内容を置き換える。
->
-> 検証実施日: 2026-07-12
-
-## 前提確認
-
-- `frontend/package.json` の `scripts` に `test` 系コマンドはなく、`vitest` / `jest` 等のテストランナーは devDependencies に存在しない。既存 `*.test.*` / `*.spec.*` ファイルも0件（`find` で確認）。→ 新規テストランナー導入はスコープ外（設計書 Test strategy 節の方針どおり）とし、以下の方針で検証した。
-  1. `npx vue-tsc -b` / `npm run build` による型検査・ビルド確認（`docs/lessons-learned.md` の指摘どおり、bare `vue-tsc --noEmit` は使用していない）
-  2. 実装コードの全文読み合わせによる静的検証（AC-1〜AC-8全項目）
-  3. **AC-4（既存会話が汚染されず新規会話にのみ送信される）と `sendReportPrompt` フローについては、テストランナーを新規導入せずに、リポジトリに既存の `esbuild`（vite の依存として既に `node_modules` に存在）で `conversationStore.ts` を実行時にトランスパイルし、実 Pinia ストア・実ストアコードに対して `fetch` のみモックして動作させる Node スクリプトを作成・実行し、実コードの挙動を実測した**（スクリプトはリポジトリ外のスクラッチパスに置き、リポジトリには追加していない）。
+> 本ファイルは前機能（サイドバー定型レポートボタン）のレポートを上書きしたものであり、最新の検証結果のみを反映する。
 
 ## Commands run
 
-```
-# 型検査・ビルド
-cd frontend && npx vue-tsc -b
-cd frontend && npm run build
-
-# 既存テスト有無の確認
-cd frontend && find . -iname "*.test.*" -o -iname "*.spec.*"   # node_modules除外、0件
-grep -i "vitest|jest|test" frontend/package.json                # マッチなし
-
-# 実ストアコードに対する動的検証（esbuildでconversationStore.tsをその場でトランスパイルし、実Pinia+モックfetchで実行）
-node <scratchpad>/store-check.cjs       # AC-4本体・sendReportPromptフロー・タイトル・キーワード一致
-node <scratchpad>/store-check-ac6.cjs   # ストア自体に多重送信ガードが無いことの実測（AC-6の担保根拠の確認）
-```
+1. バックエンド自動テスト（全件）
+   ```
+   cd backend
+   ./mvnw.cmd test
+   ```
+2. フロントエンド型検証（lessons-learned.mdの教訓どおり bare `--noEmit` ではなく `-b` を使用）
+   ```
+   cd frontend
+   npx vue-tsc -b
+   ```
+3. フロントエンド本番ビルド
+   ```
+   cd frontend
+   npm run build
+   ```
+4. API実挙動確認（バックエンドを別ポート8081で起動）
+   ```
+   cd backend
+   SERVER_PORT=8081 ./mvnw.cmd spring-boot:run
+   curl http://localhost:8081/api/monitoring/snapshot   (複数回)
+   ```
+   検証後、起動した java プロセス（PID 3908、`Get-NetTCPConnection -LocalPort 8081` で特定）のみを `Stop-Process` で停止。8080番ポートの既存プロセス（本タスクと無関係）には一切触れていない。
 
 ## Result
 
-| 項目 | 結果 |
-|---|---|
-| `npx vue-tsc -b`（frontend） | PASS（EXIT_CODE=0、エラー0件） |
-| `npm run build`（frontend） | PASS（`vite v7.3.6`、`41 modules transformed`、`dist/` 生成、`built in 638ms`） |
-| ストア動的検証（store-check.cjs） | PASS（全アサーション成功。詳細は下記） |
-| ストア動的検証（store-check-ac6.cjs） | 実測完了（バグではなく設計どおりの挙動を確認。詳細は AC-6 の項参照） |
-| 既存テストスイート | 該当なし（フロントエンドにテストランナー未導入。バックエンドは本改修で無変更のため再実行不要と判断） |
+- バックエンド: **全26件パス**（既存25件＋今回追加した1件）。`BUILD SUCCESS`。
+- フロントエンド型検証: **EXIT_CODE=0**（エラーなし）。
+- フロントエンドビルド: **成功**（`vite v7.3.6`、45 modules transformed、`dist/` 生成）。
+- API実挙動確認: **正常**。スキーマ一致・値域0〜100・呼び出しごとの値変動を実機で確認。
+- AC-3〜AC-8（ブラウザでの手動確認項目）: **未実施**（自動検証不能。下記「手動確認手順（未実施）」に具体的ステップを整理）。
 
-失敗（コード上の不具合）は**検出されなかった**。全体として実装は要件・設計と整合している。ただし AC-1, 2, 3, 5, 6, 7, 8 は要件書自身が「検証方法: 手動確認」と明記しており、本レポートでは**コードレビューによる静的検証**にとどまる（ブラウザでの実機確認は未実施）。
+## 追加したテスト
 
-## 動的検証の詳細（AC-4 / sendReportPromptフロー）
+既存の `MonitoringMetricsServiceTest`（2件）・`MonitoringControllerTest`（1件）はAC-1・AC-2の基本的な値域・変動検証をカバーしていたが、以下の観点が手薄だったため追加した。
 
-`conversationStore.ts` の実コードを `esbuild.transformSync`（TS→CJS）でその場でトランスパイルし、実 `pinia`（`createPinia`/`setActivePinia`）上でストアを生成、`global.fetch` のみを `MockChatService.java` のキーワード判定ロジックを模したモックに差し替えて実行した（`postChat` 以降の実装・`sendMessage`/`sendReportPrompt`/`createMessage` は全て本物のコード）。
+1. `backend/src/test/java/com/example/chatbackend/MonitoringMetricsServiceTest.java`
+   - 新規 `firstSnapshotMatchesFixedTopologyIdsLabelsAndConnections()` — 設計書・`docs/monitoring-response-schema.md` の固定トポロジー表（9ノードのid/label、12エッジのid/source/target）と実際のスナップショットが完全一致することを検証（従来は件数とID集合への包含のみで、具体的なid/label/接続関係までは未検証だった）。
+2. `backend/src/test/java/com/example/chatbackend/MonitoringControllerTest.java`
+   - `snapshotReturnsFixedTopologyWithMetricsInRange()` に `nodes[8]`（末尾ノード）・`edges[11]`（末尾エッジ）の型・値域アサーションを追加（従来は `nodes[0]`/`edges[0]` の先頭要素のみの確認で、配列全体のフィールド網羅性が担保されていなかった）。
 
-シナリオと結果:
-1. 会話Aを作成し「こんにちは」を送信 → 会話Aに user+assistant の2メッセージ（想定どおり）
-2. `sendReportPrompt('当月担当者別問い合わせ')` を実行
-   - 会話数が1件増加（新規会話が作成された）
-   - `activeConversationId` が会話Aとは異なるIDに変わった
-   - **会話Aのメッセージ数は2件のまま変化なし**（AC-4の中核: 既存会話が汚染されない）
-   - 新規会話には user メッセージ（`content === '当月担当者別問い合わせ'`）→ assistant メッセージの2件が追加
-   - 新規会話の `title === '当月担当者別問い合わせ'`（20文字以内のためトリムなし全文一致、FR-5想定どおり）
-   - `fetch` に渡された送信文字列がラベルと完全一致（FR-3の「同一の文字列」要件を確認）
-   - 応答文言に「担当者別」を含み、`components` が2件（table/bar_chart相当）返る（「担当」キーワードにマッチしたシナリオが選ばれたことを確認）
-3. `sendReportPrompt('当月カテゴリ別問い合わせ')` も同様に新規会話が作成され、タイトルがラベル一致、応答が「カテゴリ別」シナリオになることを確認
-4. `sendReportPrompt` 実行中（`fetch` 待機中）に `store.isLoading === true` であること、完了後に `false` に戻ることを確認（FR-6の前提となる `isLoading` 制御自体は正しく機能）
+いずれもグリーン。既存テスト構成・スタイル（AssertJ / MockMvc + jsonPath、既存の `MockChatServiceTest`/`ChatControllerTest` と同スタイル）を踏襲した。
 
-実行結果（抜粋）:
-```
-PASS: all store-level assertions succeeded
-Total conversations created: 4
-fetchCalls: ["こんにちは","当月担当者別問い合わせ","当月カテゴリ別問い合わせ","当月担当者別問い合わせ"]
-```
+## 実行結果の詳細
 
-失敗したアサーションは0件。
-
-## AC-6 の追加実測（ストア自体の多重送信ガードの有無）
-
-`sendReportPrompt` を `await` を挟まず2回連続で呼び出す（＝`:disabled` によるクリック無効化が効かなかった場合を模擬）と、会話が **2件** 作成されることを実測した。
+### 1. バックエンド `./mvnw.cmd test`
 
 ```
-conversations created by 2 unguarded rapid calls: 2
+[INFO] Running com.example.chatbackend.ChatBackendApplicationTests
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.example.chatbackend.ChatControllerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.example.chatbackend.MockChatServiceTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.example.chatbackend.MonitoringControllerTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Running com.example.chatbackend.MonitoringMetricsServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+
+[INFO] Results:
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
 ```
 
-これはバグではなく、設計書 Risks/edge cases 節に明記された設計どおりの挙動である（「多重送信防止は `:disabled` 属性のみで実現し、ハンドラ内に `if (isLoading) return` は入れない」）。すなわち **AC-6（連打しても会話が1つしか作られない）の担保は完全にブラウザのネイティブ挙動（`disabled` 属性が付いた `<button>` は `click` イベントを発火しない）に依存しており、Node上のストア単体テストでは検証しきれない**。`Sidebar.vue` 側で `:disabled="store.isLoading"` が実装されていること（コード確認済み、下記参照）は確認できるが、実際にブラウザで連打しても1件しか増えないことは**手動でのブラウザ確認が必須**。
+既存の `ChatBackendApplicationTests`/`ChatControllerTest`/`MockChatServiceTest` も含めて全件グリーンであり、モニタリング機能の追加によるチャット機能側の回帰は確認されなかった。
+
+### 2. フロントエンド `npx vue-tsc -b`
+
+`EXIT_CODE=0`。エラー出力なし。
+
+### 3. フロントエンド `npm run build`
+
+```
+> frontend@0.0.0 build
+> vue-tsc -b && vite build
+
+vite v7.3.6 building client environment for production...
+✓ 45 modules transformed.
+dist/index.html                  0.46 kB │ gzip:  0.29 kB
+dist/assets/index-ClkQIbXb.css  23.19 kB │ gzip:  5.30 kB
+dist/assets/index-DqC4veOt.js   89.48 kB │ gzip: 33.55 kB
+✓ built in 2.58s
+EXIT_CODE=0
+```
+
+### 4. API実挙動確認（`SERVER_PORT=8081`）
+
+- 起動直後、`curl http://localhost:8081/api/monitoring/snapshot` は `HTTP_CODE=200`。
+- レスポンス構造は `docs/monitoring-response-schema.md` と一致: `nodes` 9件（`id`/`label`/`cpuPercent`/`memoryPercent`）、`edges` 12件（`id`/`sourceId`/`targetId`/`bandwidthPercent`）。id・label・接続関係（`internet→lb→web-1/2→app-1/2→cache/db-primary→db-replica` のフルメッシュ含む）もドキュメント記載の表と一致。
+- 短間隔（1〜2秒間隔）で計4回連続呼び出しした結果、全ノード・全エッジの数値が呼び出しごとに変動していることを確認（例: `internet.cpuPercent` が `20.06 → 23.94 → 22.99 → 21.53` のように毎回異なる値）。すべての値は目視で0〜100の範囲内。
+- 8080番ポートには本タスクと無関係な既存プロセスが `404` を返す状態で待ち受けていたため、指示どおり `SERVER_PORT=8081` で別プロセスとして起動した。検証後、`Get-NetTCPConnection -LocalPort 8081` で特定した自プロセス（PID 3908、`java.exe`）のみを `Stop-Process -Force` で停止し、`curl` が接続拒否（`000`）になることを確認して停止を確認した。8080番の既存プロセスには一切干渉していない。
+
+## Failures
+
+なし。バックエンド全テスト・型検証・ビルド・API実機確認のいずれにも失敗はなかった。
+
+## 手動確認手順（未実施）
+
+以下はブラウザでの目視確認が必要なため、本検証（自動化エージェント）では実施していない。実装者または次工程担当者が下記手順で確認すること。
+
+**前提**: `cd backend && ./mvnw.cmd spring-boot:run`（8080番）と `cd frontend && npm run dev` を起動し、Viteの `/api` プロキシ経由でブラウザからバックエンドへ到達できる状態にする。
+
+- **AC-3**（サイドバーのボタンでモニタリング画面に切り替わり、構成図・ゲージ・数値が表示される。チャットに戻ると元の会話がそのまま表示される）
+  1. チャット画面で何か1往復会話しておく。
+  2. サイドバーの「システムモニタリング」ボタンを押す → メイン領域が構成図（9ノード・12エッジのSVG）に切り替わり、選択中の見た目になることを確認。
+  3. サイドバーの「New Chat」または既存会話の選択、あるいは定型レポートボタンを押す → チャット画面に戻り、手順1で行った会話がそのまま表示されていることを確認。
+
+- **AC-4**（5秒ごとに数値・ゲージが更新され、最終更新時刻が進む）
+  1. モニタリング画面を開いたまま30秒程度観察し、5秒間隔でノードの数値・ゲージ幅が変化し、画面上部の「最終更新: HH:mm:ss」が進むことを確認（ページリロードなしで更新されること）。
+
+- **AC-5**（黄・赤への色変化とその後の正常色復帰）
+  1. モニタリング画面を数分間開いたままにし、いずれかのノード枠またはエッジが黄（70%以上）または赤（90%以上）に変化し、その後緑に戻ることを確認。
+  2. 発生が遅い場合は `MonitoringMetricsService` の `SPIKE_MEAN_INTERVAL_TICKS`/`SPIKE_DURATION_TICKS` を一時的に小さくして確認を早めてよい（確認後は既定値に戻すこと）。
+
+- **AC-6**（バックエンド停止時のエラーバナー維持、再起動での自動復帰）
+  1. モニタリング画面表示中にバックエンドプロセスを停止する。
+  2. 直前の構成図がそのまま表示され続け、接続エラーバナーが表示されることを確認。
+  3. バックエンドを再起動し、次のポーリング成功時にバナーが消えて更新が再開することを確認。
+
+- **AC-7**（チャット画面表示中は新APIへのリクエストが発生しない）
+  1. ブラウザDevToolsのNetworkタブを開いた状態でチャット画面を数十秒観察し、`/api/monitoring/snapshot` へのリクエストが一切発生しないことを確認。
+
+- **AC-8**（必須フィールド欠落応答時にクラッシュせずエラー扱いになる）
+  1. DevToolsのローカルオーバーライド機能（または `MonitoringMetricsService` を一時改変）で `/api/monitoring/snapshot` のレスポンスから必須フィールド（例: `nodes[0].cpuPercent`）を欠落させる。
+  2. フロントエンドがJSエラーでクラッシュせず、バナーまたは全面エラー表示になることを確認。確認後は変更を元に戻す。
 
 ## 受け入れ基準カバレッジ
 
-| AC | 内容(要約) | 検証方法 | 結果 |
+| AC | 内容 | 判定 | 根拠 |
 |---|---|---|---|
-| AC-1 | サイドバー上下2分割、上部New Chat+履歴、下部に2レポートボタン表示 | コード確認（`Sidebar.vue` テンプレート・CSS: `.sidebar-top`/`.sidebar-reports`、`REPORT_BUTTONS` を `v-for`）＋ `App.vue`/`style.css` の高さ連鎖（`height:100vh`→`.app-body{flex:1;min-height:0}`→`.sidebar`はflex子として伸長）の確認 | コード検証済み（手動ブラウザ確認推奨） |
-| AC-2 | 「当月担当者別問い合わせ」押下→新規会話・同名ユーザー吹き出し→担当者別表＋棒グラフ応答 | コード確認（`sendReportPrompt`→`sendMessage`の実フロー）＋ 動的検証スクリプトで新規会話作成・ラベル一致送信・「担当」キーワードマッチ・応答2コンポーネントを実測。バックエンド`MockChatService.java`のキーワード「担当」とラベルの前方一致を確認 | 自動（ストア動的検証）で実証済み。実際のバックエンドAPI経由でのUI描画は手動ブラウザ確認推奨 |
-| AC-3 | 「当月カテゴリ別問い合わせ」押下→カテゴリ別表＋棒グラフ応答 | 同上（動的検証スクリプトで「カテゴリ」キーワードマッチと応答文言を実測） | 自動（ストア動的検証）で実証済み。UI描画は手動ブラウザ確認推奨 |
-| AC-4 | 既存会話でやり取りした状態でレポートボタン押下→既存会話は変化なし、新規会話にのみ送信 | 動的検証スクリプト（実ストアコード実行）で実測: 既存会話のメッセージ数不変・新規`activeConversationId`への切替・新規会話にのみメッセージ追加を確認 | **PASS（自動テストで実証済み）** |
-| AC-5 | レポート実行後、履歴先頭にボタンラベルがタイトルの会話が追加。切替後も再表示可 | コード確認（`sendMessage`のタイトル設定ロジック`conversation.messages.length===0`時に`trimmed.slice(0,20)`）＋動的検証で`title===label`を実測。会話配列は`unshift`のため先頭追加も確認（`createConversation`実装）。「切替後の再表示」はメッセージが`conversation.messages`に永続保持される設計（メモリ内）のためロジック上再現される | コード検証済み・タイトル一致は自動テストで実証。切替後の画面再表示は手動ブラウザ確認推奨 |
-| AC-6 | 応答待ち中はボタン無効化、連打しても会話1つのみ | コード確認: `Sidebar.vue`の`:disabled="store.isLoading"`実装済み。動的検証で**ストア自体には多重送信ガードがなく、防止策が`:disabled`属性のみに依存する**ことを実測 | コード検証済み（設計どおり）。**実際の連打時の挙動はブラウザでのネイティブ`disabled`動作に依存するため手動確認が必須** |
-| AC-7 | New Chat・会話選択・手入力送信の既存挙動が変わらない | コード確認: `handleNewChat`/`handleSelect`/`sendMessage`本体は無変更（diffで確認）。`MessageInput.vue`/`ChatWindow.vue`も無変更 | コード検証済み（回帰リスク低）。手動ブラウザ確認推奨 |
-| AC-8 | 会話履歴が多数でも上部のみスクロール、下部ボタンは常時表示 | コード確認: `.sidebar{min-height:0}`→`.sidebar-top{flex:1;min-height:0}`→`.conversation-list{flex:1;min-height:0;overflow-y:auto}`、`.sidebar-reports{flex-shrink:0}`という設計書どおりのFlexboxパターン（`app-main`/`chat-window`と同じ既存慣習）を確認 | コード検証済み。実際の多数件でのスクロール挙動は手動ブラウザ確認推奨 |
+| AC-1 | GETエンドポイントで9ノード・12エッジ、全メトリクス0〜100のJSON | **合格（自動テスト＋実機確認）** | `MonitoringMetricsServiceTest.firstSnapshotReturnsFixedTopologyWithAllMetricsInRange`（ノード9/エッジ12・値域）、`firstSnapshotMatchesFixedTopologyIdsLabelsAndConnections`（今回追加、id/label/接続の完全一致）、`MonitoringControllerTest`（HTTPレベル、先頭・末尾要素の型・値域）がいずれもグリーン。加えて `curl http://localhost:8081/api/monitoring/snapshot` の実レスポンスでも構造・値域を確認済み。 |
+| AC-2 | 連続呼び出しで値が変動し常に0〜100 | **合格（自動テスト＋実機確認）** | `MonitoringMetricsServiceTest.repeatedCallsVaryWhileStayingWithinRange`（30回連続呼び出しで全値0〜100かつ少なくとも1系列が変化）がグリーン。加えて `curl` を4回連続実行し、全ノード・全エッジの値が毎回変動していることを実機で確認済み。 |
+| AC-3 | サイドバーで画面切替、構成図・ゲージ・数値表示、チャット復帰時に会話維持 | **手動確認待ち** | 自動検証不能。手動確認手順を上記に記載。`App.vue`/`Sidebar.vue`/`MonitoringView.vue`/`TopologyDiagram.vue` の実装（`docs/implementation-notes.md` Step 6-7）はコードレビューベースでは要件を満たす構成になっているが、ブラウザでの実機確認は未実施。 |
+| AC-4 | 5秒ごとの非リロード更新・最終更新時刻の進行 | **手動確認待ち** | 自動検証不能。`monitoringStore.ts` の `startPolling`（`window.setInterval`, `POLL_INTERVAL_MS=5000`）はコード上確認済みだが、ブラウザでの実挙動確認は未実施。 |
+| AC-5 | 黄・赤への変化とその後の正常復帰 | **手動確認待ち** | 自動検証不能。バックエンド側のスパイクロジックは自動テストの30回連続呼び出しで統計的に発火していると推定されるが（`SPIKE_MEAN_INTERVAL_TICKS=12±6`）、色変化の目視確認は未実施。 |
+| AC-6 | バックエンド停止時のエラーバナー維持と再起動後の自動復帰 | **手動確認待ち** | 自動検証不能。`monitoringStore.fetchSnapshot()` の `catch` で `hasError=true` のみ設定し `snapshot` を書き換えない実装（コードレビューで確認）だが、ブラウザでの実機確認は未実施。 |
+| AC-7 | チャット画面表示中は新APIへのリクエストが発生しない | **手動確認待ち** | 自動検証不能。DevTools Networkタブでの確認が必須（設計書にも明記）。`MonitoringView.vue` の `onMounted`/`onUnmounted` によるポーリング一本化はコードレビューで確認済みだが、実機確認は未実施。 |
+| AC-8 | 必須フィールド欠落応答時にクラッシュせずエラー扱い | **手動確認待ち** | 自動検証不能（フロントに自動テスト基盤なし、新規導入もタスク範囲外）。`monitoringApi.ts` の `isValidMonitoringNode`/`isValidMonitoringEdge`/`validateMonitoringSnapshot` はコードレビューで要件どおりの検証ロジックであることを確認したが、実際の不正応答を用いたブラウザでの動作確認は未実施。 |
 
-## バックエンドのキーワードマッチ前提の確認
+## 補足
 
-`backend/src/main/java/com/example/chatbackend/MockChatService.java` を確認した。
+- フロントエンドには自動テスト基盤（vitest等）が導入されていないため、本タスクの指示どおり新規導入は行わず、型検証（`vue-tsc -b`）とビルド（`npm run build`）のみを自動チェックとした。
+- `lessons-learned.md` の教訓（bare `vue-tsc --noEmit` は0ファイルしかチェックしないため使わない）を適用し、`npx vue-tsc -b` および `npm run build`（内部で `vue-tsc -b` を実行）で検証した。
 
-```java
-private static final String ASSIGNEE_KEYWORD = "担当";
-private static final String CATEGORY_KEYWORD = "カテゴリ";
-...
-if (message.contains(ASSIGNEE_KEYWORD)) { return assigneeScenario(); }
-if (message.contains(CATEGORY_KEYWORD) || message.contains(TYPE_KEYWORD)) { return categoryScenario(); }
+## 再検証（レビュー指摘対応後）
+
+対応差分: (1) `frontend/src/stores/monitoringStore.ts` — `startPolling()` ごとにインクリメントする `fetchGeneration` 世代カウンタを追加し、`fetchSnapshot()` の `await` 解決時に `requestGeneration !== this.fetchGeneration` なら結果（成功・失敗いずれも）を破棄するよう変更（`stopPolling()`→再度`startPolling()`が短時間で起きた場合に、古いin-flightリクエストの応答が新しい世代の状態を上書きするレースコンディションの修正）。(2) `docs/monitoring-response-schema.md` — 未来形の記述を実装済みの現在形に修正（ドキュメントのみ、コード変更なし）。
+
+### Commands run
+
+```
+cd frontend
+npx vue-tsc -b
+npm run build
+
+cd backend
+./mvnw.cmd test
 ```
 
-- 「当月担当者別問い合わせ」は `"担当"` を部分文字列として含む → `assigneeScenario()` に一致
-- 「当月カテゴリ別問い合わせ」は `"カテゴリ"` を部分文字列として含む → `categoryScenario()` に一致
+### Result
 
-要件書の前提（「前提（調査により確認）」節）どおりであることをコードレベルで再確認した。バックエンドは本改修で変更されていないため（`git diff --stat` でバックエンドファイルの変更なしを確認）、退行リスクはない。
+| コマンド | 結果 |
+|---|---|
+| `npx vue-tsc -b` | EXIT_CODE=0（エラーなし） |
+| `npm run build` | 成功（`vite v7.3.6`、45 modules transformed、`built in 927ms`、`dist/` 再生成） |
+| `./mvnw.cmd test`（全件） | `Tests run: 26, Failures: 0, Errors: 0, Skipped: 0` — `BUILD SUCCESS`（バックエンドは無変更のため件数・内訳とも前回と同一。回帰なしを再確認） |
 
-## 手動確認が必要な残項目（実施推奨事項）
+失敗: なし。
 
-以下はコードレビューでは代替できず、`npm run dev` + バックエンド起動状態でのブラウザ目視確認が必要（設計書 Implementation steps 4 と同内容）:
+### コードレビュー所見（`monitoringStore.ts` の修正内容）
 
-- AC-1: レイアウトが崩れず上下2分割で表示されるか
-- AC-2/AC-3: 実際にボタンを押して表＋棒グラフが正しく描画されるか
-- AC-5: 他会話に切り替えて戻った際に表＋グラフが再表示されるか
-- AC-6: 連打（特にネットワーク遅延がある実環境）で本当に会話が1つしか増えないか
-- AC-7: 目視での既存機能（New Chat／会話選択／手入力送信）の回帰確認
-- AC-8: 会話履歴を十数件作った状態でのスクロール挙動
+- `fetchGeneration` は `startPolling()` 内でのみインクリメントされ、`fetchSnapshot()` は呼び出し開始時点の世代番号を `requestGeneration` として保持し、`await` 解決後に現在の世代と比較して不一致なら成功・失敗いずれの分岐でも早期returnして状態を書き換えない実装になっている（成功時の `snapshot`/`lastUpdatedAt`/`hasError=false` 更新、失敗時の `hasError=true` 設定の両方をガード）。
+- `stopPolling()` 自体は `fetchGeneration` をインクリメントしないため、「ポーリング停止中に古いリクエストが解決した場合」は世代不一致にならず状態が書き換わりうるが、`MonitoringView.vue` は `onUnmounted` で `stopPolling()` を呼ぶのみでコンポーネント自体がアンマウントされるため実害はない（画面に表示されない状態への書き込みであり、次回 `onMounted`→`startPolling()` 時に `fetchGeneration` がインクリメントされ、以降のin-flight応答は正しくフィルタされる）。指摘された「古いレスポンスが新しい世代の状態を上書きする」レースは解消されていることをコードレビューで確認した。
+- 型検証・ビルドの通過により、TypeScript上の整合性（`fetchGeneration: number` の状態追加、比較ロジックの型）にも問題がないことを確認した。
 
-## 結論
+### AC判定への影響
 
-- 型検査・ビルド: PASS（エラー0件）
-- ストアロジック（AC-4中核部分）: 実コードに対する動的検証でPASS、不具合なし
-- コード上の不具合: 検出されなかった
-- AC-6の多重送信防止はストア内部ガードではなく`:disabled`属性のみに依存する設計（設計書に明記済みの既知の設計判断であり、バグではない）。ブラウザでの実機連打確認が唯一の最終担保手段である点を申し送る
-- AC-1, 2, 3, 5, 6, 7, 8 はコードレビューでは「実装が要件を満たす作りになっている」ことまでは確認できたが、要件書自身が定める検証方法（手動確認）を代替するものではないため、ブラウザでの目視確認を推奨する
+AC-1〜AC-8のいずれの判定にも変化なし。
+
+- AC-1・AC-2: バックエンド無変更のため引き続き**合格**（自動テスト26件グリーン、内容は前回と同一）。
+- AC-3〜AC-8: 引き続き**手動確認待ち**。今回の修正はポーリングのレースコンディション対策であり、主にAC-4（5秒ごとの更新）・AC-6（バックエンド停止/再起動時の復帰）の裏側の堅牢性に関わる変更だが、ブラウザでの実機確認（画面を素早く切り替えた際に古いデータで上書きされないこと）は本検証では実施していない。上記「手動確認手順（未実施）」のAC-4・AC-6確認時に、あわせてモニタリング画面を素早く開閉（`showMonitoring`→即座に`showChat`→即座に`showMonitoring`）しても表示が壊れない・古いデータで上書きされないことの確認を推奨する。
