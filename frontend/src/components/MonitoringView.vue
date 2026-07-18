@@ -7,6 +7,7 @@ import {
   buildCauseAnalysisChoiceLabel,
   CLOSE_ALERT_LABEL,
   type AlertSeverity,
+  type MonitoringAlert,
 } from '../constants/monitoringAlert'
 import TopologyDiagram from './TopologyDiagram.vue'
 
@@ -25,31 +26,19 @@ const lastUpdatedLabel = computed(() => {
   })
 })
 
-const alertBannerLabel = computed(() =>
-  store.pendingAlert ? buildAlertReplyText(store.pendingAlert) : '',
-)
-
 const ALERT_BANNER_SEVERITY_CLASS: Record<AlertSeverity, string> = {
   warning:
-    'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20',
+    'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-300 dark:hover:bg-orange-500/20',
   danger:
     'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20',
 }
 
-const alertBannerClass = computed(() =>
-  store.pendingAlert ? ALERT_BANNER_SEVERITY_CLASS[store.pendingAlert.severity] : '',
-)
-
-function handleAlertBannerClick() {
-  const alert = store.pendingAlert
-  if (!alert) {
-    return
-  }
+function handleAlertBannerClick(alert: MonitoringAlert) {
   conversationStore.createAlertConversation(buildAlertReplyText(alert), [
     buildCauseAnalysisChoiceLabel(alert),
     CLOSE_ALERT_LABEL,
   ])
-  store.consumePendingAlert()
+  store.consumePendingAlert(alert)
   store.showChat()
 }
 
@@ -74,13 +63,14 @@ onUnmounted(() => {
     </div>
 
     <button
-      v-if="store.pendingAlert"
+      v-for="alert in store.pendingAlerts"
+      :key="alert.targetId"
       type="button"
       class="shrink-0 rounded-lg border px-3 py-2 text-left text-xs transition-colors"
-      :class="alertBannerClass"
-      @click="handleAlertBannerClick"
+      :class="ALERT_BANNER_SEVERITY_CLASS[alert.severity]"
+      @click="handleAlertBannerClick(alert)"
     >
-      <span class="font-semibold">⚠ {{ alertBannerLabel }}</span>
+      <span class="font-semibold">⚠ {{ buildAlertReplyText(alert) }}</span>
       <span class="ml-1 underline">クリックして原因を確認</span>
     </button>
 

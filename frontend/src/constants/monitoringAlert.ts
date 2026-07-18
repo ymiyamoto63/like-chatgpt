@@ -1,10 +1,16 @@
 export type AlertSeverity = 'warning' | 'danger'
 
+export type AlertMetric = 'cpu' | 'memory' | 'traffic'
+
+export type AlertMetricLabel = 'CPU' | 'メモリ' | 'トラフィック'
+
 export interface MonitoringAlert {
-  nodeId: string
-  nodeLabel: string
-  metric: 'cpu' | 'memory'
-  metricLabel: 'CPU' | 'メモリ'
+  // ノードのidまたはエッジのid（両者は衝突しない前提）
+  targetId: string
+  // ノードのlabel、またはエッジの場合は「Web-1〜App-1間」のような区間表記
+  targetLabel: string
+  metric: AlertMetric
+  metricLabel: AlertMetricLabel
   value: number
   severity: AlertSeverity
 }
@@ -22,11 +28,11 @@ export const CLOSE_ALERT_LABEL = '閉じる'
 export function buildAlertReplyText(alert: MonitoringAlert): string {
   const value = Math.round(alert.value)
   if (alert.severity === 'danger') {
-    return `${alert.nodeLabel} の${alert.metricLabel}使用率が${value}%（危険水準）に達しました。原因を確認しますか？`
+    return `${alert.targetLabel} の${alert.metricLabel}使用率が${value}%（危険水準）に達しました。原因を確認しますか？`
   }
-  return `${alert.nodeLabel} の${alert.metricLabel}使用率が${value}%（警告水準）です。念のため原因を確認しますか？`
+  return `${alert.targetLabel} の${alert.metricLabel}使用率が${value}%（警告水準）です。念のため原因を確認しますか？`
 }
 
 export function buildCauseAnalysisChoiceLabel(alert: MonitoringAlert): string {
-  return `${alert.nodeLabel}の${alert.metricLabel}${CAUSE_ANALYSIS_KEYWORD}`
+  return `${alert.targetLabel}の${alert.metricLabel}${CAUSE_ANALYSIS_KEYWORD}`
 }

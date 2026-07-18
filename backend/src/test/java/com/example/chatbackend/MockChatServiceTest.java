@@ -192,6 +192,22 @@ class MockChatServiceTest {
 	}
 
 	@Test
+	void trafficAlertCauseQuestionReturnsTrafficCauseAnalysis() {
+		ChatResponse response = mockChatService.generateResponse("LB〜Web-1間のトラフィック使用率が高い原因を教えて");
+
+		assertThat(response.reply()).isEqualTo("直近のトラフィック増加の要因を分析しました。大容量ファイル転送による帯域占有が主な要因です。");
+		assertThat(response.components()).hasSize(2);
+
+		TableComponent table = (TableComponent) response.components().get(0);
+		assertThat(table.columns()).containsExactly("通信種別", "帯域占有率");
+
+		BarChartComponent barChart = (BarChartComponent) response.components().get(1);
+		assertThat(barChart.title()).isEqualTo("通信種別別 帯域占有率");
+		assertThat(barChart.labels()).containsExactly("file-transfer", "api-calls", "db-replication", "other");
+		assertThat(barChart.values()).containsExactly(45.0, 27.0, 18.0, 10.0);
+	}
+
+	@Test
 	void closeAlertLabelReturnsAcknowledgementWithNoComponents() {
 		ChatResponse response = mockChatService.generateResponse("閉じる");
 

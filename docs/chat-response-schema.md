@@ -255,12 +255,13 @@ TrendChartComponent
 
 ## シナリオF: モニタリング連携アラート
 
-システムモニタリング画面（`GET /api/monitoring/snapshot`側）でノードのCPUまたはメモリ使用率が90%（danger閾値）に達すると、フロントエンドが**バックエンドを一切呼び出さずに**アラート文＋`choices`コンポーネントを新規会話へ直接生成する（詳細は[docs/requirements/monitoring-chat-alert.md](requirements/monitoring-chat-alert.md)参照）。本APIが関与するのは、そのアラート発言内の選択肢をユーザーがクリックした後のみである。
+システムモニタリング画面（`GET /api/monitoring/snapshot`側）でノードのCPU／メモリ使用率、またはエッジのトラフィック（帯域）使用率が80%（warning閾値）または90%（danger閾値）に達すると、フロントエンドが**バックエンドを一切呼び出さずに**アラート文＋`choices`コンポーネントを新規会話へ直接生成する（詳細は[docs/requirements/monitoring-chat-alert.md](requirements/monitoring-chat-alert.md)参照）。本APIが関与するのは、そのアラート発言内の選択肢をユーザーがクリックした後のみである。
 
 | 受信メッセージ | 応答 |
 |---|---|
 | `<ノード名>のCPU使用率が高い原因を教えて`（「使用率が高い原因を教えて」＋「CPU」を含む） | CPU使用率の汎用原因分析（表＋棒グラフ。ノードに依存しない固定データ） |
 | `<ノード名>のメモリ使用率が高い原因を教えて`（「使用率が高い原因を教えて」＋「メモリ」を含む） | メモリ使用率の汎用原因分析（表＋棒グラフ。ノードに依存しない固定データ） |
+| `<区間表記>のトラフィック使用率が高い原因を教えて`（「使用率が高い原因を教えて」＋「トラフィック」を含む。区間表記例: `LB〜Web-1間`） | トラフィックの汎用原因分析（表＋棒グラフ。エッジに依存しない固定データ） |
 | `閉じる` | `"承知しました。"`（`components` 空） |
 
 ### CPU原因分析応答（トリガー例: `Web-1のCPU使用率が高い原因を教えて`）
@@ -310,6 +311,32 @@ TrendChartComponent
       "title": "プロセス別 メモリ使用率",
       "labels": ["cache-layer", "api-server", "session-store", "other"],
       "values": [38.0, 25.0, 19.0, 10.0]
+    }
+  ]
+}
+```
+
+### トラフィック原因分析応答（トリガー例: `LB〜Web-1間のトラフィック使用率が高い原因を教えて`）
+
+```json
+{
+  "reply": "直近のトラフィック増加の要因を分析しました。大容量ファイル転送による帯域占有が主な要因です。",
+  "components": [
+    {
+      "type": "table",
+      "columns": ["通信種別", "帯域占有率"],
+      "rows": [
+        ["file-transfer", "45%"],
+        ["api-calls", "27%"],
+        ["db-replication", "18%"],
+        ["other", "10%"]
+      ]
+    },
+    {
+      "type": "bar_chart",
+      "title": "通信種別別 帯域占有率",
+      "labels": ["file-transfer", "api-calls", "db-replication", "other"],
+      "values": [45.0, 27.0, 18.0, 10.0]
     }
   ]
 }

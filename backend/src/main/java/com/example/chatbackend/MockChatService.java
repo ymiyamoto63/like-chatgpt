@@ -34,6 +34,7 @@ public class MockChatService {
 	private static final String CAUSE_ANALYSIS_KEYWORD = "使用率が高い原因を教えて";
 	private static final String CPU_METRIC_KEYWORD = "CPU";
 	private static final String MEMORY_METRIC_KEYWORD = "メモリ";
+	private static final String TRAFFIC_METRIC_KEYWORD = "トラフィック";
 	private static final String CLOSE_ALERT_LABEL = "閉じる";
 
 	public ChatResponse generateResponse(String message) {
@@ -202,6 +203,9 @@ public class MockChatService {
 			if (message.contains(MEMORY_METRIC_KEYWORD)) {
 				return memoryCauseAnalysis();
 			}
+			if (message.contains(TRAFFIC_METRIC_KEYWORD)) {
+				return trafficCauseAnalysis();
+			}
 		}
 		if (message.equals(CLOSE_ALERT_LABEL)) {
 			return alertClosed();
@@ -240,6 +244,23 @@ public class MockChatService {
 				List.of(38.0, 25.0, 19.0, 10.0));
 		return new ChatResponse(
 				"直近のメモリ使用率上昇の要因を分析しました。キャッシュ層のメモリ消費増加が主な要因です。",
+				List.of(table, barChart));
+	}
+
+	private ChatResponse trafficCauseAnalysis() {
+		TableComponent table = new TableComponent(
+				List.of("通信種別", "帯域占有率"),
+				List.of(
+						List.of("file-transfer", "45%"),
+						List.of("api-calls", "27%"),
+						List.of("db-replication", "18%"),
+						List.of("other", "10%")));
+		BarChartComponent barChart = new BarChartComponent(
+				"通信種別別 帯域占有率",
+				List.of("file-transfer", "api-calls", "db-replication", "other"),
+				List.of(45.0, 27.0, 18.0, 10.0));
+		return new ChatResponse(
+				"直近のトラフィック増加の要因を分析しました。大容量ファイル転送による帯域占有が主な要因です。",
 				List.of(table, barChart));
 	}
 

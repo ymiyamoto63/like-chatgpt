@@ -16,19 +16,19 @@ const props = defineProps<{
 
 const LEVEL_STROKE_CLASS: Record<MonitoringLevel, string> = {
   normal: 'stroke-emerald-500 dark:stroke-emerald-400',
-  warning: 'stroke-amber-500 dark:stroke-amber-400',
+  warning: 'stroke-orange-500 dark:stroke-orange-400',
   danger: 'stroke-rose-500 dark:stroke-rose-400',
 }
 
 const LEVEL_FILL_CLASS: Record<MonitoringLevel, string> = {
   normal: 'fill-emerald-500 dark:fill-emerald-400',
-  warning: 'fill-amber-500 dark:fill-amber-400',
+  warning: 'fill-orange-500 dark:fill-orange-400',
   danger: 'fill-rose-500 dark:fill-rose-400',
 }
 
 const LEVEL_TEXT_CLASS: Record<MonitoringLevel, string> = {
   normal: 'fill-emerald-600 dark:fill-emerald-400',
-  warning: 'fill-amber-600 dark:fill-amber-400',
+  warning: 'fill-orange-600 dark:fill-orange-400',
   danger: 'fill-rose-600 dark:fill-rose-400',
 }
 
