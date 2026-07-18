@@ -24,11 +24,17 @@ export interface TrendChartComponent {
   average: number
 }
 
+export interface FaqListComponent {
+  type: 'faq_list'
+  titles: string[]
+}
+
 export type UiComponentSpec =
   | TableComponent
   | BarChartComponent
   | ChoicesComponent
   | TrendChartComponent
+  | FaqListComponent
 
 export interface Message {
   id: string

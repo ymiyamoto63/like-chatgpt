@@ -2,6 +2,7 @@ import { API_BASE_URL } from '../constants/api'
 import type {
   BarChartComponent,
   ChoicesComponent,
+  FaqListComponent,
   TableComponent,
   TrendChartComponent,
   UiComponentSpec,
@@ -65,6 +66,11 @@ function isValidTrendChartComponent(value: unknown): value is TrendChartComponen
   return typeof average === 'number' && Number.isFinite(average)
 }
 
+function isValidFaqListComponent(value: unknown): value is FaqListComponent {
+  const { titles } = value as Record<string, unknown>
+  return isStringArray(titles) && titles.length > 0
+}
+
 function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -81,6 +87,9 @@ function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   }
   if (record.type === 'trend_chart') {
     return isValidTrendChartComponent(record)
+  }
+  if (record.type === 'faq_list') {
+    return isValidFaqListComponent(record)
   }
   return false
 }

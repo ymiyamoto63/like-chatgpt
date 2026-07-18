@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ChatResponseFormatError, postChat } from '../api/chatApi'
 import { loadPersistedState } from './conversationPersistence'
+import { FAQ_UNRESOLVED_LABEL } from '../constants/faq'
 import type { Conversation, Message, UiComponentSpec } from '../types/chat'
 
 const TITLE_MAX_LENGTH = 20
@@ -8,6 +9,8 @@ const TITLE_MAX_LENGTH = 20
 export const INQUIRY_TRIGGER = '新規問い合わせ'
 const CATEGORY_ANSWER_PATTERN = /^カテゴリ: (請求|技術|アカウント|その他)$/
 const URGENCY_ANSWER_PATTERN = /^緊急度: (高|中|低)$/
+const INQUIRY_SUMMARY_PATTERN =
+  /^カテゴリ: (請求|技術|アカウント|その他) \/ 緊急度: (高|中|低) \/ 内容: .+$/
 
 function createMessage(
   role: Message['role'],
@@ -42,6 +45,18 @@ function buildInquirySummary(
     const answer = userMessages[i].content
     if (CATEGORY_ANSWER_PATTERN.test(answer)) {
       return `${answer} / ${last.content} / 内容: ${content}`
+    }
+  }
+  return null
+}
+
+// 会話履歴中の直近の累積文（内容入力ステップで送信された定型文）を探す。
+// フロントの一時状態を持たず、常に conversation.messages（永続化済み）から復元する（FR-9）
+function findLastInquirySummary(conversation: Conversation): string | null {
+  const userMessages = conversation.messages.filter((m) => m.role === 'user')
+  for (let i = userMessages.length - 1; i >= 0; i--) {
+    if (INQUIRY_SUMMARY_PATTERN.test(userMessages[i].content)) {
+      return userMessages[i].content
     }
   }
   return null
@@ -116,6 +131,13 @@ export const useConversationStore = defineStore('conversation', {
       await this.dispatchUserMessage(summary ?? trimmed)
     },
     async sendChoice(option: string) {
+      if (option === FAQ_UNRESOLVED_LABEL) {
+        const conversation = this.activeConversation
+        const summary = conversation ? findLastInquirySummary(conversation) : null
+        const content = summary ? `${FAQ_UNRESOLVED_LABEL} / ${summary}` : option
+        await this.dispatchUserMessage(content)
+        return
+      }
       await this.dispatchUserMessage(option)
     },
     async dispatchUserMessage(content: string) {

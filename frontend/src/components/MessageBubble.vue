@@ -2,6 +2,7 @@
 import type {
   BarChartComponent,
   ChoicesComponent,
+  FaqListComponent,
   Message,
   TableComponent,
   TrendChartComponent,
@@ -11,6 +12,7 @@ import TableView from './TableView.vue'
 import BarChartView from './BarChartView.vue'
 import ChoicesView from './ChoicesView.vue'
 import TrendChartView from './TrendChartView.vue'
+import FaqListView from './FaqListView.vue'
 
 defineProps<{
   message: Message
@@ -35,6 +37,10 @@ function isChoicesComponent(component: UiComponentSpec): component is ChoicesCom
 
 function isTrendChartComponent(component: UiComponentSpec): component is TrendChartComponent {
   return component.type === 'trend_chart'
+}
+
+function isFaqListComponent(component: UiComponentSpec): component is FaqListComponent {
+  return component.type === 'faq_list'
 }
 </script>
 
@@ -62,6 +68,12 @@ function isTrendChartComponent(component: UiComponentSpec): component is TrendCh
         <TrendChartView v-else-if="isTrendChartComponent(component)" :spec="component" />
         <ChoicesView
           v-else-if="isChoicesComponent(component)"
+          :spec="component"
+          :disabled="!choicesEnabled"
+          @select="emit('select', $event)"
+        />
+        <FaqListView
+          v-else-if="isFaqListComponent(component)"
           :spec="component"
           :disabled="!choicesEnabled"
           @select="emit('select', $event)"

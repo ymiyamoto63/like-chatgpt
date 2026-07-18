@@ -3,7 +3,10 @@ package com.example.chatbackend;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -37,6 +40,62 @@ public class MockChatService {
 	private static final String TRAFFIC_METRIC_KEYWORD = "トラフィック";
 	private static final String CLOSE_ALERT_LABEL = "閉じる";
 
+	private static final String FAQ_ANSWER_PREFIX = "FAQ: ";
+	private static final String FAQ_RESOLVED_LABEL = "解決した";
+	private static final String FAQ_UNRESOLVED_LABEL = "解決しないので問い合わせる";
+	private static final String FAQ_UNRESOLVED_PREFIX = FAQ_UNRESOLVED_LABEL + " / ";
+
+	private record FaqEntry(String category, String title, String body) {
+	}
+
+	private static final List<FaqEntry> FAQ_ENTRIES = List.of(
+			// 請求
+			new FaqEntry("請求", "請求額が二重に表示される場合",
+					"決済処理の反映タイミングのずれにより、請求額が一時的に二重表示されることがあります。"
+							+ "通常は3営業日以内に自動で修正されますが、修正後も解消しない場合はお手数ですが問い合わせください。"),
+			new FaqEntry("請求", "請求書の再発行方法",
+					"マイページの「請求・お支払い」メニューから対象月を選び、「請求書を再発行」ボタンを押すとPDFがダウンロードできます。"
+							+ "過去12か月分の請求書を再発行可能です。"),
+			new FaqEntry("請求", "支払い方法の変更手順",
+					"マイページの「お支払い方法の変更」から新しいクレジットカードまたは銀行口座を登録できます。"
+							+ "変更内容は次回の請求サイクルから適用されます。"),
+			// 技術
+			new FaqEntry("技術", "ログインできない場合の対処法",
+					"パスワードの再設定をお試しください。それでもログインできない場合は、ブラウザのキャッシュ削除、"
+							+ "別ブラウザでの再試行をお願いします。改善しない場合はアカウントロックの可能性がありますので問い合わせください。"),
+			new FaqEntry("技術", "アプリが起動しない・強制終了する場合",
+					"アプリを最新バージョンに更新し、端末を再起動してください。改善しない場合は一度アプリをアンインストールし、"
+							+ "再インストールをお試しください。"),
+			new FaqEntry("技術", "APIエラーコードの意味一覧",
+					"400番台はリクエスト内容の誤り、401はAPIキーの認証エラー、429はレート制限超過、"
+							+ "500番台はサーバー側の一時的な障害を示します。詳細なエラーコード一覧は開発者ドキュメントをご確認ください。"),
+			// アカウント
+			new FaqEntry("アカウント", "メールアドレスの変更方法",
+					"マイページの「アカウント設定」から新しいメールアドレスを入力し、届いた確認メールのリンクを開くと変更が完了します。"),
+			new FaqEntry("アカウント", "退会・アカウント削除の手続き",
+					"マイページの「アカウント設定」内「退会手続き」から申請できます。申請後、保存データは"
+							+ "所定の保持期間を経て完全に削除されます。"),
+			new FaqEntry("アカウント", "複数端末でのログイン可否",
+					"同一アカウントでスマートフォン・PCなど複数端末に同時ログインできます。ただし契約プランによっては"
+							+ "同時セッション数に上限がある場合があります。"),
+			// その他
+			new FaqEntry("その他", "営業時間・問い合わせ窓口について",
+					"サポート窓口の受付時間は平日9:00〜18:00です。土日祝日および年末年始は休業となります。"
+							+ "緊急の障害に関しては障害情報ページをご確認ください。"),
+			new FaqEntry("その他", "利用規約・プライバシーポリシーの確認方法",
+					"最新の利用規約・プライバシーポリシーはWebサイトのフッターにある「規約」リンクからいつでもご確認いただけます。"),
+			new FaqEntry("その他", "サービスの障害情報の確認方法",
+					"現在発生中の障害や復旧予定は、サービスステータスページで随時更新しています。"
+							+ "重大な障害の際はメールでも通知いたします。"));
+
+	private static final Map<String, FaqEntry> FAQ_BY_TITLE =
+			FAQ_ENTRIES.stream().collect(Collectors.toMap(FaqEntry::title, e -> e));
+
+	private static final Map<String, List<String>> FAQ_TITLES_BY_CATEGORY =
+			FAQ_ENTRIES.stream().collect(Collectors.groupingBy(
+					FaqEntry::category, LinkedHashMap::new,
+					Collectors.mapping(FaqEntry::title, Collectors.toList())));
+
 	public ChatResponse generateResponse(String message) {
 		// 新規問い合わせフローの定型文は「カテゴリ」等の既存キーワードを含むため、
 		// レポートシナリオより先に判定する
@@ -64,10 +123,20 @@ public class MockChatService {
 		if (message.equals(INQUIRY_TRIGGER) || message.equals(RETRY_LABEL)) {
 			return inquiryCategoryQuestion();
 		}
+		if (message.startsWith(FAQ_ANSWER_PREFIX)) {
+			return faqDetailResponse(message);
+		}
+		if (message.equals(FAQ_RESOLVED_LABEL)) {
+			return faqResolvedCompletion();
+		}
+		if (message.startsWith(FAQ_UNRESOLVED_PREFIX)) {
+			InquirySummary summary = parseInquirySummary(message.substring(FAQ_UNRESOLVED_PREFIX.length()));
+			return summary != null ? inquiryConfirmation(summary) : null;
+		}
 		if (message.startsWith(CATEGORY_ANSWER_PREFIX)) {
-			ChatResponse confirmation = inquiryConfirmation(message);
-			if (confirmation != null) {
-				return confirmation;
+			InquirySummary summary = parseInquirySummary(message);
+			if (summary != null) {
+				return faqPresentation(summary);
 			}
 			return inquiryUrgencyQuestion();
 		}
@@ -108,7 +177,13 @@ public class MockChatService {
 		return new ChatResponse("問い合わせ内容を入力してください。", List.of());
 	}
 
-	private ChatResponse inquiryConfirmation(String message) {
+	private record InquirySummary(String category, String urgency, String content) {
+	}
+
+	private InquirySummary parseInquirySummary(String message) {
+		if (!message.startsWith(CATEGORY_ANSWER_PREFIX)) {
+			return null;
+		}
 		int urgencyIndex = message.indexOf(SUMMARY_URGENCY_MARKER);
 		int contentIndex = message.indexOf(SUMMARY_CONTENT_MARKER);
 		if (urgencyIndex < 0 || contentIndex < 0 || urgencyIndex >= contentIndex) {
@@ -117,15 +192,45 @@ public class MockChatService {
 		String category = message.substring(CATEGORY_ANSWER_PREFIX.length(), urgencyIndex);
 		String urgency = message.substring(urgencyIndex + SUMMARY_URGENCY_MARKER.length(), contentIndex);
 		String content = message.substring(contentIndex + SUMMARY_CONTENT_MARKER.length());
-		TableComponent summary = new TableComponent(
+		return new InquirySummary(category, urgency, content);
+	}
+
+	private ChatResponse inquiryConfirmation(InquirySummary summary) {
+		TableComponent table = new TableComponent(
 				List.of("項目", "内容"),
 				List.of(
-						List.of("カテゴリ", category),
-						List.of("緊急度", urgency),
-						List.of("内容", content)));
+						List.of("カテゴリ", summary.category()),
+						List.of("緊急度", summary.urgency()),
+						List.of("内容", summary.content())));
 		ChoicesComponent choices = new ChoicesComponent(
 				List.of(SUBMIT_LABEL, RETRY_LABEL, CANCEL_LABEL));
-		return new ChatResponse("以下の内容で登録してよろしいですか？", List.of(summary, choices));
+		return new ChatResponse("以下の内容で登録してよろしいですか？", List.of(table, choices));
+	}
+
+	private ChatResponse faqPresentation(InquirySummary summary) {
+		List<String> titles = FAQ_TITLES_BY_CATEGORY.getOrDefault(summary.category(), List.of());
+		return new ChatResponse(
+				"ご登録の前に、関連するFAQをご確認ください。",
+				List.of(new FaqListComponent(titles),
+						new ChoicesComponent(List.of(FAQ_RESOLVED_LABEL, FAQ_UNRESOLVED_LABEL))));
+	}
+
+	private ChatResponse faqDetailResponse(String message) {
+		String title = message.substring(FAQ_ANSWER_PREFIX.length());
+		FaqEntry entry = FAQ_BY_TITLE.get(title);
+		if (entry == null) {
+			return null;
+		}
+		List<String> titles = FAQ_TITLES_BY_CATEGORY.getOrDefault(entry.category(), List.of());
+		return new ChatResponse(
+				entry.body(),
+				List.of(new FaqListComponent(titles),
+						new ChoicesComponent(List.of(FAQ_RESOLVED_LABEL, FAQ_UNRESOLVED_LABEL))));
+	}
+
+	private ChatResponse faqResolvedCompletion() {
+		return new ChatResponse(
+				"解決してよかったです。またご不明な点があればお気軽にお尋ねください。", List.of());
 	}
 
 	private ChatResponse inquiryCompletion() {

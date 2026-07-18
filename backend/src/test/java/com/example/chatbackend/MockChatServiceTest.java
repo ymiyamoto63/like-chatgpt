@@ -107,9 +107,78 @@ class MockChatServiceTest {
 	}
 
 	@Test
-	void inquirySummaryReturnsConfirmationWithTableAndChoices() {
+	void inquirySummaryReturnsFaqPresentationWithFaqListAndChoices() {
 		ChatResponse response = mockChatService
 				.generateResponse("カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
+
+		assertThat(response.reply()).isEqualTo("ご登録の前に、関連するFAQをご確認ください。");
+		assertThat(response.components()).hasSize(2);
+
+		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
+		assertThat(faqList.titles()).containsExactly(
+				"請求額が二重に表示される場合", "請求書の再発行方法", "支払い方法の変更手順");
+
+		ChoicesComponent choices = (ChoicesComponent) response.components().get(1);
+		assertThat(choices.options()).containsExactly("解決した", "解決しないので問い合わせる");
+	}
+
+	@Test
+	void inquirySummaryForTechnicalCategoryReturnsTechnicalFaqs() {
+		ChatResponse response = mockChatService
+				.generateResponse("カテゴリ: 技術 / 緊急度: 中 / 内容: アプリが落ちる");
+
+		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
+		assertThat(faqList.titles()).containsExactly(
+				"ログインできない場合の対処法", "アプリが起動しない・強制終了する場合", "APIエラーコードの意味一覧");
+	}
+
+	@Test
+	void inquirySummaryForAccountCategoryReturnsAccountFaqs() {
+		ChatResponse response = mockChatService
+				.generateResponse("カテゴリ: アカウント / 緊急度: 低 / 内容: メールアドレスを変更したい");
+
+		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
+		assertThat(faqList.titles()).containsExactly(
+				"メールアドレスの変更方法", "退会・アカウント削除の手続き", "複数端末でのログイン可否");
+	}
+
+	@Test
+	void inquirySummaryForOtherCategoryReturnsOtherFaqs() {
+		ChatResponse response = mockChatService
+				.generateResponse("カテゴリ: その他 / 緊急度: 低 / 内容: 営業時間を知りたい");
+
+		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
+		assertThat(faqList.titles()).containsExactly(
+				"営業時間・問い合わせ窓口について", "利用規約・プライバシーポリシーの確認方法", "サービスの障害情報の確認方法");
+	}
+
+	@Test
+	void faqAnswerReturnsFaqDetailWithFaqListAndChoices() {
+		ChatResponse response = mockChatService.generateResponse("FAQ: 請求額が二重に表示される場合");
+
+		assertThat(response.reply()).contains("決済処理の反映タイミングのずれ");
+		assertThat(response.components()).hasSize(2);
+
+		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
+		assertThat(faqList.titles()).containsExactly(
+				"請求額が二重に表示される場合", "請求書の再発行方法", "支払い方法の変更手順");
+
+		ChoicesComponent choices = (ChoicesComponent) response.components().get(1);
+		assertThat(choices.options()).containsExactly("解決した", "解決しないので問い合わせる");
+	}
+
+	@Test
+	void faqResolvedReturnsCompletionMessageWithNoComponents() {
+		ChatResponse response = mockChatService.generateResponse("解決した");
+
+		assertThat(response.reply()).isEqualTo("解決してよかったです。またご不明な点があればお気軽にお尋ねください。");
+		assertThat(response.components()).isEmpty();
+	}
+
+	@Test
+	void faqUnresolvedWithSummaryReturnsConfirmationWithTableAndChoices() {
+		ChatResponse response = mockChatService.generateResponse(
+				"解決しないので問い合わせる / カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
 
 		assertThat(response.reply()).isEqualTo("以下の内容で登録してよろしいですか？");
 		assertThat(response.components()).hasSize(2);
