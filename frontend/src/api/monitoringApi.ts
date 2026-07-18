@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../constants/api'
 import type { MonitoringEdge, MonitoringNode, MonitoringSnapshot } from '../types/monitoring'
 
 export class MonitoringResponseFormatError extends Error {}
@@ -46,7 +47,7 @@ function validateMonitoringSnapshot(value: unknown): MonitoringSnapshot {
 }
 
 export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
-  const response = await fetch('/api/monitoring/snapshot')
+  const response = await fetch(`${API_BASE_URL}/api/monitoring/snapshot`)
 
   if (!response.ok) {
     throw new Error(`Monitoring API request failed with status ${response.status}`)

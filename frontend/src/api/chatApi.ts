@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../constants/api'
 import type {
   BarChartComponent,
   ChoicesComponent,
@@ -104,7 +105,7 @@ function validateChatApiResponse(value: unknown): ChatApiResponse {
 }
 
 export async function postChat(message: string): Promise<ChatApiResponse> {
-  const response = await fetch('/api/chat', {
+  const response = await fetch(`${API_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
