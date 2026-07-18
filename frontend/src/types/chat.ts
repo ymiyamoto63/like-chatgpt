@@ -11,7 +11,24 @@ export interface BarChartComponent {
   values: number[]
 }
 
-export type UiComponentSpec = TableComponent | BarChartComponent
+export interface ChoicesComponent {
+  type: 'choices'
+  options: string[]
+}
+
+export interface TrendChartComponent {
+  type: 'trend_chart'
+  title: string
+  labels: string[]
+  values: number[]
+  average: number
+}
+
+export type UiComponentSpec =
+  | TableComponent
+  | BarChartComponent
+  | ChoicesComponent
+  | TrendChartComponent
 
 export interface Message {
   id: string

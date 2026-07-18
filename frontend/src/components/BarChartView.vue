@@ -18,72 +18,35 @@ const bars = computed(() =>
 </script>
 
 <template>
-  <div class="bar-chart-view">
-    <p class="chart-title">{{ spec.title }}</p>
-    <div class="chart-rows">
-      <div v-for="(bar, barIndex) in bars" :key="barIndex" class="chart-row">
-        <span class="chart-label">{{ bar.label }}</span>
-        <div class="chart-track">
-          <div class="chart-bar" :style="{ width: bar.widthPercent + '%' }"></div>
+  <div class="flex max-w-full flex-col gap-2">
+    <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+      {{ spec.title }}
+    </p>
+    <div class="flex flex-col gap-1.5">
+      <div
+        v-for="(bar, barIndex) in bars"
+        :key="barIndex"
+        class="flex items-center gap-2"
+      >
+        <span
+          class="min-w-20 shrink-0 text-xs text-zinc-700 dark:text-zinc-300"
+        >
+          {{ bar.label }}
+        </span>
+        <div
+          class="h-2.5 min-w-16 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700"
+        >
+          <div
+            class="h-full rounded-full bg-violet-500"
+            :style="{ width: bar.widthPercent + '%' }"
+          ></div>
         </div>
-        <span class="chart-value">{{ bar.value }}</span>
+        <span
+          class="min-w-6 shrink-0 text-right text-xs tabular-nums text-zinc-700 dark:text-zinc-300"
+        >
+          {{ bar.value }}
+        </span>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.bar-chart-view {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 100%;
-}
-
-.chart-title {
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-.chart-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.chart-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.chart-label {
-  flex: 0 0 auto;
-  min-width: 80px;
-  color: var(--text-h);
-  font-size: 0.9em;
-}
-
-.chart-track {
-  flex: 1 1 auto;
-  min-width: 60px;
-  height: 12px;
-  border-radius: 6px;
-  background: var(--code-bg);
-  overflow: hidden;
-}
-
-.chart-bar {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 6px;
-}
-
-.chart-value {
-  flex: 0 0 auto;
-  min-width: 24px;
-  text-align: right;
-  color: var(--text-h);
-  font-size: 0.9em;
-}
-</style>

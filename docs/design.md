@@ -1,180 +1,270 @@
-# 実装設計書: 動的UI生成チャット応答（モック版）
+# 設計書: システム構成図モニタリング画面
 
-> 本書は `docs/requirements.md`（動的UI生成チャット応答・要件定義書）を正本とし、既存コード（`frontend/src/{types,api,stores,components}`、`backend/src/main/java/com/example/chatbackend/*`）を実読したうえで作成した実装設計書である。前回パイプライン実行分（ChatGPT風試作アプリの初期実装設計）の内容を置き換える。
+対応する要件定義: [docs/requirements/system-monitoring-view.md](requirements/system-monitoring-view.md)
 
 ## Approach
 
-- **応答スキーマの型**: バックエンドは `ChatResponse(reply, components)` を返す。`components` は `UiComponent`（Java 21 sealed interface）の配列で、`TableComponent` / `BarChartComponent` の2実装のみを `permits` する。Jackson の `@JsonTypeInfo(use = Id.NAME, include = As.PROPERTY, property = "type") + @JsonSubTypes` により、レコード自体に `type` フィールドを持たせずシリアライズ時に `"type":"table"` 等を自動付与する。これにより各レコードは純粋にデータフィールドのみを持つ（`ChatRequest`/`ChatResponse` が既にレコードである既存スタイルを踏襲）。
-- **モックサービス**: `EchoService` を `MockChatService` に置き換える。`generateResponse(String message)` が入力文にキーワード（「担当」→担当者別シナリオ、「カテゴリ」「種別」→カテゴリ別シナリオ、どちらもマッチしなければ案内テキストのみ）でシナリオを判定し、`ChatResponse` を直接組み立てて返す。バックエンドは引き続きステートレス（インスタンスフィールドを持たず、リクエストごとに完結）。
-- **フロントエンドの型と検証境界**: `types/chat.ts` に `TableComponent` / `BarChartComponent` / `UiComponentSpec`（判別共用体）を追加し、`Message` に任意の `components?: UiComponentSpec[]` を追加する。API応答の形は本質的に「将来LLMが返す信頼できないJSON」なので、`chatApi.ts` の `postChat` 内で `fetch` 直後に受信JSON（`unknown`）を検証し、妥当なら `ChatApiResponse` として返し、不正なら専用の `ChatResponseFormatError` を投げる。ストア（`conversationStore.ts`）はこの例外と通信エラー（既存の `fetch` failure / non-2xx）を区別してキャッチし、それぞれ異なる文言の吹き出しを追加する。これにより「解釈できない応答」（FR-7）と「通信エラー」（FR-8）の既存パス・新規パスが明確に分離される。
-- **描画コンポーネント**: `TableView.vue`（`<table>` をテキスト補間のみで描画）と `BarChartView.vue`（棒グラフ）を新規作成し、`MessageBubble.vue` が `message.components` を順に振り分けて描画する。すべて `{{ }}` テキスト補間または算出済み数値の `:style` バインディングのみを用い、`v-html` は一切使用しない。
-- **グラフ描画方式（重要な決定）**: 外部チャートライブラリは導入せず、`BarChartView.vue` は素の Vue テンプレート＋CSS（flexboxの横棒）でレンダリングする。`frontend/package.json` への依存追加は行わない。理由は下記「Alternatives considered」を参照。
-- **JSONスキーマ契約文書**: `docs/chat-response-schema.md` を新規作成し、下記「応答JSONスキーマ（確定仕様）」の内容をベースに、フィールド定義・制約・3シナリオ分のサンプルJSONを記載する。このサンプルJSONは `ChatControllerTest` が検証する実際のレスポンスと一致させる（AC-8）。
+サイドバーに新規ボタン「システムモニタリング」を追加し、押下すると `App.vue` のメイン領域が `ChatWindow` から新規コンポーネント `MonitoringView` に切り替わる（ルーター不使用・`v-if`/`v-else` の条件描画、切替状態は新規 Pinia ストア `monitoringStore` の `activeScreen` フラグで保持）。バックエンドは新規 `GET /api/monitoring/snapshot` を追加し、固定トポロジー（9ノード・12エッジ）と現在のCPU/メモリ/帯域使用率をひとつのJSONスナップショットとして返す。メトリクスは `MonitoringMetricsService`（`@Service` シングルトン）がインメモリの前回値マップを保持し、リクエストごとに1ティック分のランダムウォーク＋周期スパイクを計算して返す（チャット機能側は無変更でステートレスのまま）。フロントエンドは `monitoringApi.ts` が `chatApi.ts` と同じ方針（必須フィールド検証・未知フィールド無視・不正時は例外）で応答を検証し、`monitoringStore` が5秒間隔のポーリング（`setInterval`）を管理する。ポーリングの開始/停止は `MonitoringView.vue` の `onMounted`/`onUnmounted` に一本化し、画面がDOMに存在する間だけ通信が発生するようにする。構成図は `TopologyDiagram.vue` が固定座標（フロント側定数）でノード・エッジをSVG（`<rect>`/`<line>`/`<text>`、外部ライブラリ不使用）に自作描画し、CPU/メモリ/帯域の3段階しきい値（70%/90%）で枠色・線色を切り替える。既存のチャット関連ファイル（`ChatController`/`MockChatService`/`UiComponent`/`chatApi.ts`/`chat.ts`/`conversationStore.ts`）には一切変更を加えない。
 
 ## Alternatives considered
 
-- **棒グラフ描画: 手組みCSS/SVG vs. 軽量チャートライブラリ（Chart.js, frappe-charts 等）**: 要件は「静的な棒グラフ・インタラクティブ機能なし・1種類のみ」に限定されており、将来的な拡張（他のチャート種別）は明示的にNon-goal。ライブラリは複数チャート種別・スケール・アニメーション・ツールチップ等を含み、今回使わない機能のためにバンドルサイズと依存（サプライチェーン・XSS観点でのレビュー対象）が増える。素の `<div>`＋`:style="{ width: pct + '%' }"`（`pct` はこちらで計算した数値、レスポンス由来の文字列をそのままCSSに埋め込むことはしない）で要件を過不足なく満たせるため、依存追加ゼロの手組み方式を採用する。将来インタラクティブ機能や折れ線・円グラフが必要になった時点でライブラリ導入を再検討すればよい。
-- **Jacksonポリモーフィズム: `As.PROPERTY`（型情報を実行時に注入）vs. `As.EXISTING_PROPERTY`（レコードに`type`フィールドを持たせる）**: `As.EXISTING_PROPERTY` だとレコードのコンストラクタで毎回 `"table"` 等のリテラルを渡す必要があり冗長かつタイプミスの余地がある。バックエンドはレスポンス生成のみ（デシリアライズ不要）なので `As.PROPERTY` でJackson側に型情報注入を任せ、レコードはデータフィールドのみに保つ。
-- **表セルの型: 全セル `String` 統一 vs. `String|Number` 混在**: 件数のような数値も表示上は文字列として扱い `rows: List<List<String>>` に統一する。混在型にするとフロント側の検証（各セルが `string` か `number` かを都度判定）が複雑になる一方、静的な表示専用データという用途では得られる利益がない。数値もサービス側で文字列化してから詰める。
-
-## 応答JSONスキーマ（確定仕様・`docs/chat-response-schema.md` に転記する内容）
-
-```
-ChatResponse（トップレベル、常にこの形。旧 {"reply": string} 形式は廃止）
-{
-  "reply": string,                 // 必須。UIコンポーネントの有無に関わらず常に非nullの文字列
-  "components": UiComponent[]      // 必須。0件以上の配列。フィールド自体は常に存在し、null にはならない（非マッチ時は []）
-}
-
-UiComponent = TableComponent | BarChartComponent   // "type" で判別する共用体。現時点でこの2種類のみ
-
-TableComponent
-{
-  "type": "table",                 // 固定リテラル
-  "columns": string[],             // 列見出し。要素数 >= 1
-  "rows": string[][]               // 各要素（行）の長さは必ず columns.length と一致。セル値は表示用文字列（数値も文字列化）
-}
-
-BarChartComponent
-{
-  "type": "bar_chart",              // 固定リテラル
-  "title": string,                  // グラフ見出し
-  "labels": string[],                // 棒のラベル。要素数 >= 1
-  "values": number[]                 // labels と同数。JSON number（本モックでは非負整数のみ使用、スキーマ上は小数も許容）
-}
-```
-
-### モックデータ（固定・3シナリオ）
-
-- **シナリオA: 担当者別（FR-4a）** — トリガー: メッセージに「担当」を含む
-  - `reply`: `"今月の担当者別の問い合わせ件数をまとめました。"`
-  - `components[0]` (table): `columns=["担当者","件数"]`, `rows=[["佐藤","12"],["鈴木","9"],["田中","7"],["高橋","5"]]`
-  - `components[1]` (bar_chart): `title="担当者別 問い合わせ件数"`, `labels=["佐藤","鈴木","田中","高橋"]`, `values=[12,9,7,5]`
-- **シナリオB: カテゴリ別（FR-4b）** — トリガー: メッセージに「カテゴリ」または「種別」を含む
-  - `reply`: `"カテゴリ別の問い合わせ件数をまとめました。"`
-  - `components[0]` (table): `columns=["カテゴリ","件数"]`, `rows=[["請求","15"],["技術","11"],["アカウント","6"],["その他","4"]]`
-  - `components[1]` (bar_chart): `title="カテゴリ別 問い合わせ件数"`, `labels=["請求","技術","アカウント","その他"]`, `values=[15,11,6,4]`
-- **シナリオC: 非マッチ（FR-5）**
-  - `reply`: `"『今月の問い合わせ件数を担当者別にまとめて』のように聞いてください。表やグラフでお答えします。"`
-  - `components`: `[]`
-
-判定順序: 「担当」を含むか → シナリオA。含まなければ「カテゴリ」または「種別」を含むか → シナリオB。どちらも含まなければ → シナリオC。
-
-## フロントエンドの検証・フォールバック方式（FR-7 / AC-5）
-
-- 検証は **メッセージ単位・全体検証**。`components` 配列内の要素を1つでも解釈できなければ、そのメッセージ全体を「解釈できない応答」として扱う（部分的に描画できるコンポーネントだけ表示する、という部分成功は行わない。要件の「解釈できない応答を受け取った場合」という記述と、既存の通信エラー時と同じ「吹き出し1つで代替」というパターンに合わせるため）。
-- 検証場所: `chatApi.ts` の `postChat` 内、`fetch` 成功後・`response.json()` 直後。
-  - `reply` が `string` でない → 不正
-  - `components` が配列でない → 不正
-  - `components` の各要素について、`type === 'table'` なら `columns: string[]`（非空）かつ `rows: string[][]`（各行の長さが `columns.length` と一致）を確認、`type === 'bar_chart'` なら `title: string`、`labels: string[]`（非空）、`values: number[]`（`labels` と同数、各要素が有限数）を確認。`type` がこの2値以外、またはいずれの条件も満たさない要素があれば不正
-  - 不正と判定した場合は `ChatResponseFormatError`（新規の `Error` サブクラス）を throw する。正常時は検証済みの `ChatApiResponse { reply, components }` を返す
-- `conversationStore.ts` の `sendMessage` は `postChat` 呼び出しを try/catch し、`catch` 節で `err instanceof ChatResponseFormatError` を判定する:
-  - `true` の場合 → アシスタント吹き出しとして `"応答を表示できませんでした"` を追加（新規、FR-7専用文言）
-  - `false`（`fetch` 自体の失敗、`response.ok === false` によるエラー等）の場合 → 既存どおり `"エラー: 応答を取得できませんでした"` を追加（FR-8、退行させない）
-- これによりアプリはどちらのケースでも例外を外side（Vueのレンダリングやグローバルハンドラ）へ漏らさず、通常のメッセージ追加と同じ経路でエラー吹き出しを積むため、画面全体は操作可能なまま維持される（AC-5の「画面全体は操作可能なまま維持される」を担保）。
-- `MessageBubble.vue` / `TableView.vue` / `BarChartView.vue` 側では追加のスキーマ検証は行わない（ストアに積まれる `components` は既に検証済みという契約にする。二重実装を避けるため）。ただし `MessageBubble.vue` の振り分けは `type` の網羅的な分岐（`table` → `TableView`、`bar_chart` → `BarChartView`、それ以外は何も描画しない）とし、万一未検証データが渡っても描画側でクラッシュしない構造にしておく。
+- **ポーリングの開始/停止を各サイドバーハンドラ（New Chat・会話選択・定型レポート・新規問い合わせ）に個別に `stopPolling()` を仕込む案**も検討した。しかし呼び出し漏れのリスクがあり、将来「チャットに戻る」導線が増えた場合に事故りやすい。`MonitoringView.vue` の `onMounted`/`onUnmounted` にポーリング制御を一本化し、サイドバー側は `activeScreen` フラグを立て替えるだけ（Vueのコンポーネントのマウント/アンマウントが自動的にポーリングの開始/停止に連動）とする方が単一責任で事故りにくいため、こちらを採用した。
+- **スパイク対象（ノード/エッジ）ごとに独立した非同期スケジューラ（別スレッド・`@Scheduled`）でバックグラウンド更新する案**も検討したが、要件は「5秒ポーリングのたびに値が変動していればよい」（AC-2は連続呼び出しでの変動を検証するのみ）ため、リクエスト駆動（1回の `GET` 呼び出し＝1ティック）の方が実装・テストとも単純でスレッド安全性の考慮も最小限で済む。将来ポーリング間隔が変わっても挙動が破綻しない前提（画面表示中のみ・5秒固定）に合致するため、こちらを採用した。
+- ノード・エッジの座標（レイアウト）を **バックエンドAPIレスポンスに含める案**も検討したが、要件は「固定座標レイアウト・表示専用」であり、座標は純粋にフロントの描画関心事である。バックエンドはid/labelとメトリクス値のみを返し、座標はフロント側の定数ファイル（`monitoringLayout.ts`）に持たせることで、既存の「モックデータはバックエンドで生成しフロントは描画に徹する」方針を保ちつつAPIスキーマを最小に保てる。
 
 ## Files affected
 
-### バックエンド
+### バックエンド（新規）
 
-- `backend/src/main/java/com/example/chatbackend/UiComponent.java`（新規） — `sealed interface UiComponent permits TableComponent, BarChartComponent`。`@JsonTypeInfo(use=Id.NAME, include=As.PROPERTY, property="type")` + `@JsonSubTypes({@JsonSubTypes.Type(value=TableComponent.class, name="table"), @JsonSubTypes.Type(value=BarChartComponent.class, name="bar_chart")})`
-- `backend/src/main/java/com/example/chatbackend/TableComponent.java`（新規） — `record TableComponent(List<String> columns, List<List<String>> rows) implements UiComponent {}`
-- `backend/src/main/java/com/example/chatbackend/BarChartComponent.java`（新規） — `record BarChartComponent(String title, List<String> labels, List<Double> values) implements UiComponent {}`
-- `backend/src/main/java/com/example/chatbackend/ChatResponse.java`（変更） — `record ChatResponse(String reply, List<UiComponent> components) {}` に変更（フィールド追加）
-- `backend/src/main/java/com/example/chatbackend/MockChatService.java`（新規、`EchoService.java` を置き換え） — `@Service`。`generateResponse(String message): ChatResponse` を公開。内部にキーワード定数と3シナリオ組み立てのprivateメソッドを持つ
-- `backend/src/main/java/com/example/chatbackend/EchoService.java`（削除）
-- `backend/src/main/java/com/example/chatbackend/ChatController.java`（変更） — コンストラクタ注入を `EchoService` → `MockChatService` に変更し、`chat()` は `mockChatService.generateResponse(request.message())` をそのまま返す
-- `backend/src/test/java/com/example/chatbackend/EchoServiceTest.java`（削除）
-- `backend/src/test/java/com/example/chatbackend/MockChatServiceTest.java`（新規） — 3シナリオの単体テスト（後述）
-- `backend/src/test/java/com/example/chatbackend/ChatControllerTest.java`（変更） — 旧 `chatReturnsEchoedReply` を撤去し、新スキーマに対応したMockMvcテストへ差し替え（後述）。`chatReturnsBadRequestForBlankMessage` はそのまま維持（AC-9の退行防止）
+- `backend/src/main/java/com/example/chatbackend/MonitoringNode.java`: ノードのメトリクスDTO（record）
+- `backend/src/main/java/com/example/chatbackend/MonitoringEdge.java`: エッジのメトリクスDTO（record）
+- `backend/src/main/java/com/example/chatbackend/MonitoringSnapshot.java`: レスポンス全体のDTO（record）
+- `backend/src/main/java/com/example/chatbackend/MonitoringMetricsService.java`: 固定トポロジー定義＋インメモリ前回値保持＋ランダムウォーク／周期スパイク生成ロジック
+- `backend/src/main/java/com/example/chatbackend/MonitoringController.java`: `GET /api/monitoring/snapshot` エンドポイント
+- `backend/src/test/java/com/example/chatbackend/MonitoringMetricsServiceTest.java`: サービス単体テスト（トポロジー形状・値域・変動をAC-1/AC-2相当で検証）
+- `backend/src/test/java/com/example/chatbackend/MonitoringControllerTest.java`: MockMvcによるHTTPレベルテスト
 
-### フロントエンド
+### フロントエンド（新規）
 
-- `frontend/src/types/chat.ts`（変更） — `TableComponent` / `BarChartComponent` / `UiComponentSpec`（判別共用体）を追加し、`Message` に `components?: UiComponentSpec[]` を追加
-- `frontend/src/api/chatApi.ts`（変更） — `ChatResponse` インターフェースを `ChatApiResponse { reply: string; components: UiComponentSpec[] }` に拡張、`ChatResponseFormatError` クラスを追加、`postChat` 内で受信JSONを検証する処理を追加
-- `frontend/src/stores/conversationStore.ts`（変更） — `createMessage` に第3引数 `components?: UiComponentSpec[]` を追加、`sendMessage` の成功時に `components` をメッセージへ渡す、`catch` を `ChatResponseFormatError` と其の他で分岐
-- `frontend/src/components/TableView.vue`（新規） — props: `spec: TableComponent`。`<table><thead><tr><th v-for>...</th></tr></thead><tbody><tr v-for row><td v-for cell>{{ cell }}</td></tr></tbody></table>`
-- `frontend/src/components/BarChartView.vue`（新規） — props: `spec: BarChartComponent`。タイトル＋ラベルごとの横棒（`:style` で算出済みwidth%を指定）＋数値表示。最大値0（または空配列）時は幅0%にフォールバック
-- `frontend/src/components/MessageBubble.vue`（変更） — 既存のテキスト表示の下に `message.components` を `v-for` で回し、`component.type === 'table'` なら `TableView`、`'bar_chart'` なら `BarChartView` を描画
-- `frontend/package.json`（変更なし） — 新規チャートライブラリは追加しない（Approach参照）
+- `frontend/src/types/monitoring.ts`: `MonitoringNode`/`MonitoringEdge`/`MonitoringSnapshot` 型定義
+- `frontend/src/api/monitoringApi.ts`: `getMonitoringSnapshot()` とレスポンス検証（`MonitoringResponseFormatError`）
+- `frontend/src/constants/monitoring.ts`: しきい値（70/90）・ポーリング間隔（5000ms）・3段階レベル判定関数
+- `frontend/src/constants/monitoringLayout.ts`: ノードid→固定座標のマップ、ノード枠サイズ、SVG viewBox定数
+- `frontend/src/stores/monitoringStore.ts`: 画面切替状態（`activeScreen`）＋モニタリングデータ・ポーリング制御
+- `frontend/src/components/MonitoringView.vue`: モニタリング画面本体（タイトル・最終更新時刻・エラーバナー/エラー表示・ポーリングのライフサイクル管理）
+- `frontend/src/components/TopologyDiagram.vue`: 構成図SVG描画（ノード＝ゲージ＋数値＋枠色、エッジ＝線色＋%ラベル）
 
-### ドキュメント
+### フロントエンド（変更）
 
-- `docs/chat-response-schema.md`（新規） — 応答JSONスキーマの契約文書。本設計書の「応答JSONスキーマ（確定仕様）」節の内容＋3シナリオのサンプルJSON（`ChatControllerTest` の実際のレスポンスと一致させる）を記載
+- `frontend/src/App.vue`: `monitoringStore.activeScreen` に応じて `ChatWindow` / `MonitoringView` を条件描画
+- `frontend/src/components/Sidebar.vue`: 「システムモニタリング」ボタンを追加（選択中スタイル付き）。既存4操作（New Chat・会話選択・定型レポート・新規問い合わせ）のハンドラ先頭で `monitoringStore.showChat()` を呼びチャット画面へ復帰させる
+
+### ドキュメント（新規）
+
+- `docs/monitoring-response-schema.md`: 新APIの応答JSONスキーマ・トポロジー定義を `docs/chat-response-schema.md` と同水準の粒度で文書化
+
+### 変更なし（明示）
+
+- `backend/src/main/java/com/example/chatbackend/ChatController.java` / `MockChatService.java` / `UiComponent.java` / 各 `*Component.java` / `ChatResponse.java`
+- `frontend/src/api/chatApi.ts` / `frontend/src/types/chat.ts` / `frontend/src/stores/conversationStore.ts`
+- `frontend/vite.config.ts`（`/api` プレフィックスの既存プロキシ設定が `/api/monitoring/snapshot` にもそのまま適用されるため変更不要）
+
+## 詳細設計
+
+### 新API: `GET /api/monitoring/snapshot`
+
+リクエストボディなし。常に200・`MonitoringSnapshot` を返す（チャットAPIと異なり検証エラーで4xxになるケースはない＝GETでパラメータを取らないため）。
+
+```
+MonitoringSnapshot
+{
+  "nodes": MonitoringNode[],
+  "edges": MonitoringEdge[]
+}
+
+MonitoringNode
+{
+  "id": string,             // 例: "web-1"
+  "label": string,          // 表示名。例: "Web-1"
+  "cpuPercent": number,     // 0〜100
+  "memoryPercent": number   // 0〜100
+}
+
+MonitoringEdge
+{
+  "id": string,             // 例: "lb-web1"
+  "sourceId": string,       // MonitoringNode.id を参照
+  "targetId": string,       // MonitoringNode.id を参照
+  "bandwidthPercent": number // 0〜100
+}
+```
+
+固定トポロジー（9ノード・12エッジ、設計時に確定）:
+
+| id | label | 階層 | baseline CPU | baseline Memory |
+|---|---|---|---|---|
+| `internet` | Internet | 0 | 20 | 15 |
+| `lb` | LB | 1 | 35 | 30 |
+| `web-1` | Web-1 | 2 | 40 | 45 |
+| `web-2` | Web-2 | 2 | 40 | 45 |
+| `app-1` | App-1 | 3 | 45 | 50 |
+| `app-2` | App-2 | 3 | 45 | 50 |
+| `cache` | Cache | 4 | 30 | 55 |
+| `db-primary` | DB Primary | 4 | 50 | 60 |
+| `db-replica` | DB Replica | 5 | 35 | 55 |
+
+| id | source → target | baseline bandwidth |
+|---|---|---|
+| `internet-lb` | internet → lb | 30 |
+| `lb-web1` | lb → web-1 | 35 |
+| `lb-web2` | lb → web-2 | 35 |
+| `web1-app1` | web-1 → app-1 | 30 |
+| `web1-app2` | web-1 → app-2 | 20 |
+| `web2-app1` | web-2 → app-1 | 20 |
+| `web2-app2` | web-2 → app-2 | 30 |
+| `app1-cache` | app-1 → cache | 25 |
+| `app2-cache` | app-2 → cache | 25 |
+| `app1-dbprimary` | app-1 → db-primary | 30 |
+| `app2-dbprimary` | app-2 → db-primary | 30 |
+| `dbprimary-dbreplica` | db-primary → db-replica | 40 |
+
+Web×2→App×2 はフルメッシュ（4本）とし、単純な1対1接続よりもエッジ本数を増やしてボトルネック表現のデモ効果を高める。
+
+### バックエンドクラス設計
+
+- `MonitoringNode(String id, String label, double cpuPercent, double memoryPercent)` — record、`UiComponent` 系とは無関係の独立DTO（判別共用体不要）。
+- `MonitoringEdge(String id, String sourceId, String targetId, double bandwidthPercent)` — record。
+- `MonitoringSnapshot(List<MonitoringNode> nodes, List<MonitoringEdge> edges)` — record。
+- `MonitoringController`: `@RestController`。コンストラクタで `MonitoringMetricsService` をDI。
+
+  ```java
+  @GetMapping("/api/monitoring/snapshot")
+  public MonitoringSnapshot snapshot() {
+      return monitoringMetricsService.getSnapshot();
+  }
+  ```
+
+- `MonitoringMetricsService`: `@Service`（シングルトンBean。インスタンスフィールドとして状態を保持する＝チャット機能のステートレス方針の明示的な例外。サーバ再起動でリセットされてよい旨をクラスコメントに明記する）。
+
+  内部状態（コンストラクタで baseline から初期化）:
+  - `Map<String, MetricState> nodeCpuStates`, `Map<String, MetricState> nodeMemoryStates`, `Map<String, MetricState> edgeBandwidthStates`（`MetricState` は current値・baseline値を保持する小さな可変クラス、またはプリミティブ配列で代用可）
+  - スパイク管理用の単一状態: `String activeSpikeTargetKey`（null可）、`Instant spikeEndsAt`、`Instant nextSpikeEligibleAt`
+
+  定数（すべて `private static final`。要件の未決定事項の推奨仮置き値を採用）:
+  - `RANDOM_WALK_STEP = 3.0`（1ティックあたりの最大変動幅）
+  - `MEAN_REVERSION_FACTOR = 0.05`（baselineへ緩やかに回帰させ、値が0/100付近に張り付き続けるのを防ぐ）
+  - `SPIKE_MEAN_INTERVAL_TICKS = 12`（5秒ポーリング前提で12ティック≒60秒に1回）
+  - `SPIKE_INTERVAL_JITTER_TICKS = 6`（次スパイクまでの間隔を `6〜18` ティック＝30〜90秒の一様乱数とし、平均60秒を実現）
+  - `SPIKE_DURATION_TICKS = 3`（5秒×3＝15秒間持続）
+  - `SPIKE_PEAK_MIN = 78.0`, `SPIKE_PEAK_MAX = 98.0`（警戒/危険域に達するピーク値の範囲）
+  - `SPIKE_DECAY_FACTOR = 0.4`（スパイク終了後、`current = current - (current - baseline) * DECAY_FACTOR` を毎ティック適用し数ティックでbaseline付近まで戻す）
+
+  `public synchronized MonitoringSnapshot getSnapshot()` の処理（1回の呼び出し＝1ティック。`synchronized` は将来的な並行リクエストに備えた保険）:
+  1. スパイクが有効かつ `now >= spikeEndsAt` なら `activeSpikeTargetKey = null` にして減衰フェーズへ移行（対象は「減衰中」フラグを別途持つ、または単純に「スパイク対象ではなくなった直後は `current` がbaselineより十分離れているので、通常のランダムウォーク＋平均回帰だけでも数ティックでbaseline付近に戻る」設計とし、専用の減衰フェーズは持たず `MEAN_REVERSION_FACTOR` を流用してもよい。ただし観測性を優先し、スパイク終了直後のみ `SPIKE_DECAY_FACTOR` による強めの回帰を1〜2ティック適用する設計とする）。
+  2. スパイクが無効かつ `now >= nextSpikeEligibleAt` なら、全ノードの cpu/memory 系列と全エッジの bandwidth 系列（合計 `9*2 + 12 = 30` 系列）から一様乱数で1つ選び、選んだ系列が属するノードの場合は cpu・memory 両方を同時にスパイク対象にする（ノード枠色は両者の最悪値で決まるため、片方だけだと分かりにくい）。スパイクのピーク値を `SPIKE_PEAK_MIN〜SPIKE_PEAK_MAX` から乱数決定し、`spikeEndsAt` を `SPIKE_DURATION_TICKS` 後に設定、`nextSpikeEligibleAt` を次回分（`SPIKE_MEAN_INTERVAL_TICKS ± SPIKE_INTERVAL_JITTER_TICKS`）に更新する。
+  3. 全系列について、スパイク対象なら現在値をピーク値方向へ強めに寄せる（例: `current += (peak - current) * 0.5` ＋小さなランダムノイズ）、非対象なら通常のランダムウォーク（`current += uniform(-STEP, STEP) + (baseline - current) * MEAN_REVERSION_FACTOR`）を適用し、最後に `clamp(current, 0, 100)` する。
+  4. 更新後の全状態から `MonitoringNode`/`MonitoringEdge` の新規インスタンス一覧を組み立てて `MonitoringSnapshot` として返す（内部の可変Mapをそのまま外部に渡さない＝直列化中の競合を避ける）。
+
+  この設計により「1回の `GET` 呼び出し＝1ティック」という単純化を採用する（バックエンドは実時刻でスケジューリングせず、フロントが5秒間隔でポーリングし続ける限り要件どおりのペースになる）。これは意図的な単純化であり、リスク節に明記する。
+
+### フロントエンド構成
+
+- `types/monitoring.ts`: `MonitoringNode` / `MonitoringEdge` / `MonitoringSnapshot` インターフェース（バックエンドのJSON構造とフィールド名を一致させる）。
+- `api/monitoringApi.ts`: `chatApi.ts` と同一方針・同一構造。
+  - `export class MonitoringResponseFormatError extends Error {}`
+  - `isValidMonitoringNode(value): value is MonitoringNode`（`id`/`label` が string、`cpuPercent`/`memoryPercent` が finite number）
+  - `isValidMonitoringEdge(value): value is MonitoringEdge`（`id`/`sourceId`/`targetId` が string、`bandwidthPercent` が finite number）
+  - `validateMonitoringSnapshot(value): MonitoringSnapshot`（`nodes`/`edges` が配列であること・各要素が上記を満たすことを検証。値域(0〜100)チェックは既存 `chatApi.ts` の数値検証（`bar_chart.values` 等）が範囲チェックをしていないことに合わせ、本APIでも型・有限性のみ検証し範囲チェックはしない）
+  - `export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot>`（`fetch('/api/monitoring/snapshot')`、`!response.ok` は `Error`、それ以外は `validateMonitoringSnapshot`）
+- `constants/monitoring.ts`:
+  ```ts
+  export const WARNING_THRESHOLD = 70
+  export const DANGER_THRESHOLD = 90
+  export const POLL_INTERVAL_MS = 5000
+  export type MonitoringLevel = 'normal' | 'warning' | 'danger'
+  export function getMonitoringLevel(value: number): MonitoringLevel { ... }
+  ```
+- `constants/monitoringLayout.ts`: `NODE_WIDTH`/`NODE_HEIGHT`/`VIEWBOX_WIDTH`/`VIEWBOX_HEIGHT` と `NODE_POSITIONS: Record<string, { x: number; y: number }>`（下記「SVGレイアウトの座標方針」の値をそのまま定数化）。
+- `stores/monitoringStore.ts`（Pinia、`conversationStore.ts` と同じ Options API 形式に合わせる）:
+  ```ts
+  state: () => ({
+    activeScreen: 'chat' as 'chat' | 'monitoring',
+    snapshot: null as MonitoringSnapshot | null,
+    lastUpdatedAt: null as number | null,
+    hasError: false,
+    pollTimerId: null as number | null,
+  }),
+  actions: {
+    showMonitoring() { this.activeScreen = 'monitoring' },
+    showChat() { this.activeScreen = 'chat' },
+    startPolling() {
+      if (this.pollTimerId !== null) return   // 二重登録防止
+      this.fetchSnapshot()                    // 表示開始時に即座取得（FR-7）
+      this.pollTimerId = window.setInterval(() => this.fetchSnapshot(), POLL_INTERVAL_MS)
+    },
+    stopPolling() {
+      if (this.pollTimerId !== null) {
+        window.clearInterval(this.pollTimerId)
+        this.pollTimerId = null
+      }
+    },
+    async fetchSnapshot() {
+      try {
+        this.snapshot = await getMonitoringSnapshot()
+        this.lastUpdatedAt = Date.now()
+        this.hasError = false
+      } catch {
+        this.hasError = true               // snapshot は書き換えない＝直前データ維持（FR-9）
+      }
+    },
+  },
+  ```
+- `components/MonitoringView.vue`: `onMounted(() => store.startPolling())` / `onUnmounted(() => store.stopPolling())` でポーリングのライフサイクルを一本化。テンプレートはタイトル・`最終更新: HH:mm:ss`（`store.lastUpdatedAt` を `Date` から整形。初回未取得時は `--:--:--`）・エラーバナー（`hasError && snapshot` の場合のみ表示、直前データのSVGは表示したまま）・初回取得失敗時の全面エラー表示（`hasError && !snapshot`）・`TopologyDiagram`（`snapshot` がある場合のみ）を条件描画する。
+- `components/TopologyDiagram.vue`: `props: { snapshot: MonitoringSnapshot }`。`NODE_POSITIONS` にIDが存在しないノード/エッジは描画をスキップする（クラッシュ防止の防御的実装。詳細はリスク節）。ノードは `getMonitoringLevel(Math.max(cpuPercent, memoryPercent))` で枠色を決定、CPU・メモリそれぞれのミニゲージ（幅=値/100の`<rect>`、色は各値独自の `getMonitoringLevel`）と数値ラベルを表示。エッジは `getMonitoringLevel(bandwidthPercent)` で線色を決定し中間点に%ラベルを表示。SVGの重なり順は「エッジの`<g>`を先に描画→ノードの`<g>`を後に描画」とし、エッジの端点は各ノード矩形の中心座標で単純に結び、ノード矩形がその上に重なることで視覚的に矩形境界から線が出ているように見せる（複雑な交点計算をしない）。色は `normal→emerald-500`, `warning→amber-500`, `danger→rose-500`（`dark:` バリアント併用、既存 `TrendChartView.vue` の `rose-500` 平均線と統一感のある配色）。
+
+### SVGレイアウトの座標方針
+
+`viewBox="0 0 960 480"`。ノード矩形サイズ `NODE_WIDTH=140, NODE_HEIGHT=76`。列（階層）ごとにx座標を固定し、同一列内の複数ノードはy座標で振り分ける（列中央基準）。
+
+| id | x（矩形左上） | y（矩形左上） |
+|---|---|---|
+| `internet` | 20 | 202 |
+| `lb` | 180 | 202 |
+| `web-1` | 340 | 60 |
+| `web-2` | 340 | 344 |
+| `app-1` | 500 | 60 |
+| `app-2` | 500 | 344 |
+| `cache` | 660 | 60 |
+| `db-primary` | 660 | 344 |
+| `db-replica` | 820 | 202 |
+
+`width="100%"` + `viewBox` のみでスケーリングし、`preserveAspectRatio` はデフォルト（`xMidYMid meet`）のまま固定座標レイアウトを維持する。エッジの座標はAPIレスポンスの `sourceId`/`targetId` を上記マップで引いた中心点同士を結ぶことで導出し、バックエンドは座標を一切持たない。
 
 ## Implementation steps
 
-1. **バックエンド: 応答スキーマの型定義**
-   - 対象: `UiComponent.java`（新規）, `TableComponent.java`（新規）, `BarChartComponent.java`（新規）, `ChatResponse.java`（変更）
-   - 内容: sealed interface + Jackson の `@JsonTypeInfo`/`@JsonSubTypes` を設定し、`ChatResponse` に `components` フィールドを追加する
-   - 確認方法: `./mvnw -q compile`（Windowsは `mvnw.cmd`）が成功すること
+1. **バックエンド: DTO＋メトリクス生成サービス**。`MonitoringNode`/`MonitoringEdge`/`MonitoringSnapshot` レコードと `MonitoringMetricsService`（固定トポロジー・ランダムウォーク・周期スパイク）を実装。`MonitoringMetricsServiceTest` を新規作成し、(a) `getSnapshot()` の初回呼び出しでノード9件・エッジ12件・全メトリクスが `[0, 100]` に収まること（AC-1相当）、(b) 連続呼び出し（例: 30回程度ループ）で少なくとも1系列は値が変化すること、かつ全呼び出しを通じて値域が常に `[0, 100]` に収まること（AC-2相当）を検証。
+   検証: `cd backend && ./mvnw test -Dtest=MonitoringMetricsServiceTest`
 
-2. **バックエンド: モックサービス実装**
-   - 対象: `MockChatService.java`（新規）, `EchoService.java`（削除）, `MockChatServiceTest.java`（新規）, `EchoServiceTest.java`（削除）
-   - 内容: キーワード判定（「担当」→シナリオA、「カテゴリ」/「種別」→シナリオB、非マッチ→シナリオC）とモックデータ組み立てロジックを実装する。上記「モックデータ」節の値をそのまま使用する
-   - 確認方法: `MockChatServiceTest` で以下を検証し green にする — (a) 「今月の問い合わせ件数を担当者別にまとめて」→ `components` に table・bar_chart が1件ずつ含まれ、値がシナリオA通り、(b) 「カテゴリ別の問い合わせ件数を見せて」→ シナリオB通り、(c) 「こんにちは」→ `reply` が案内文・`components` が空配列
+2. **バックエンド: コントローラ**。`MonitoringController`（`GET /api/monitoring/snapshot`）を追加。`MonitoringControllerTest`（`@SpringBootTest` + `MockMvc`）を新規作成し、200応答・`$.nodes`/`$.edges` のサイズと代表フィールドの型を `jsonPath` で確認。既存の `ChatControllerTest`・`MockChatServiceTest` が引き続きグリーンであることも合わせて確認（新規Beanの追加でSpringコンテキスト起動が壊れていないことの回帰確認）。
+   検証: `cd backend && ./mvnw test`（全テストがグリーン）
 
-3. **バックエンド: コントローラー更新と統合テスト**
-   - 対象: `ChatController.java`（変更）, `ChatControllerTest.java`（変更）
-   - 内容: `ChatController` の依存を `MockChatService` に差し替える。`ChatControllerTest` に AC-3, AC-4, AC-9 に対応するMockMvcテストを追加・整理する（少なくとも: 担当者系キーワードで200・`components[0].type=="table"`・`components[1].type=="bar_chart"` を `jsonPath` で確認、カテゴリ系キーワードで別データが返る確認、非マッチで `components` が空配列であり `reply` に「エコー」を含まない確認、空白メッセージで400のまま = 既存の `chatReturnsBadRequestForBlankMessage` を維持）
-   - 確認方法: `./mvnw test` が全件green。加えて `./mvnw spring-boot:run` 起動状態で `curl -X POST localhost:8080/api/chat -H "Content-Type: application/json" -d "{\"message\":\"担当者別に見せて\"}"` 等を打ち、実レスポンスJSONを目視確認する
+3. **APIスキーマのドキュメント化**。`docs/monitoring-response-schema.md` を新規作成し、上記「新API」節の内容（エンドポイント・フィールド一覧・トポロジー表）を記述する。
+   検証: レビューのみ（自動検証なし。実際に起動したバックエンドへ `curl http://localhost:8080/api/monitoring/snapshot` して記載内容と一致することを目視確認）
 
-4. **応答JSONスキーマ契約文書の作成（AC-8）**
-   - 対象: `docs/chat-response-schema.md`（新規）
-   - 内容: 本設計書の「応答JSONスキーマ（確定仕様）」節と「モックデータ」節の内容を転記し、フィールド定義表・制約・3シナリオ分のサンプルJSON（ステップ3で実際に得られたレスポンスと一字一句一致させる）を記載する。将来LLMがこの形式で出力する契約であること、`type` 以外の未知フィールドを含む拡張や新しい `type` 追加時はフロント側が安全にフォールバックする前提であることも明記する
-   - 確認方法: ステップ3のテスト・curl結果とドキュメント内サンプルJSONを突き合わせ、一致することを目視確認する（AC-8）
+4. **フロントエンド: 型・定数・APIクライアント**。`types/monitoring.ts`・`constants/monitoring.ts`・`constants/monitoringLayout.ts`・`api/monitoringApi.ts` を新規作成。
+   検証: `cd frontend && npx vue-tsc -b`（型エラーなし。lessons-learned に基づき bare `vue-tsc --noEmit` は使わない）
 
-5. **フロントエンド: 型定義更新**
-   - 対象: `frontend/src/types/chat.ts`（変更）
-   - 内容: `TableComponent` / `BarChartComponent` / `UiComponentSpec` を追加し、`Message.components?: UiComponentSpec[]` を追加する
-   - 確認方法: `npx vue-tsc --noEmit`（または `npm run build` のtsc部分）がこの時点でエラーなく通ること（他ファイル未変更のため既存コードとの型不整合は起きない想定）
+5. **フロントエンド: モニタリングストア**。`stores/monitoringStore.ts` を新規作成（`activeScreen`/`snapshot`/`lastUpdatedAt`/`hasError`/`pollTimerId` の状態と `showMonitoring`/`showChat`/`startPolling`/`stopPolling`/`fetchSnapshot` アクション）。
+   検証: `npx vue-tsc -b`
 
-6. **フロントエンド: APIクライアントの検証ロジック実装**
-   - 対象: `frontend/src/api/chatApi.ts`（変更）
-   - 内容: `ChatApiResponse` 型・`ChatResponseFormatError` クラス・受信JSONの型ガード/検証関数を実装し、`postChat` が検証済みデータを返すか `ChatResponseFormatError` を投げるようにする
-   - 確認方法: `npx vue-tsc --noEmit` 通過。加えてバックエンドを起動した状態でブラウザの開発者ツール（Network/Console）から一時的に `postChat('担当者別に見せて')` 相当の呼び出し結果をログ出力する等で、検証後のオブジェクト形状を目視確認する
+6. **フロントエンド: 構成図描画コンポーネント**。`components/TopologyDiagram.vue`（SVG描画・3段階色分け・ミニゲージ）と `components/MonitoringView.vue`（タイトル・最終更新時刻・エラーバナー/全面エラー・ポーリングのライフサイクル）を新規作成。この時点ではまだサイドバー/App.vueから到達できないため、一時的に `App.vue` で `<MonitoringView />` を直接描画する等して単体で見た目を確認してもよい（後続ステップで正式な切替に置き換える）。
+   検証: `npx vue-tsc -b` に加え、`cd backend && ./mvnw spring-boot:run` と `cd frontend && npm run dev` を起動し、ブラウザで構成図・ゲージ・数値・枠色/線色が表示されることを目視確認（AC-3前半）
 
-7. **フロントエンド: ストア更新**
-   - 対象: `frontend/src/stores/conversationStore.ts`（変更）
-   - 内容: `createMessage` に `components` 引数を追加、`sendMessage` 成功時に渡す、`catch` を `ChatResponseFormatError` とその他で分岐し、それぞれ異なる文言のアシスタント吹き出しを追加する
-   - 確認方法: `npx vue-tsc --noEmit` 通過。バックエンド起動状態で実際にメッセージを送信し、`activeConversation.messages` の末尾（Vue devtools等）に `components` が入っていることを確認
+7. **フロントエンド: 画面切替の結線**。`App.vue`（`monitoringStore.activeScreen` による条件描画）・`Sidebar.vue`（「システムモニタリング」ボタン追加＋既存4操作ハンドラの先頭に `monitoringStore.showChat()` を追加）を変更。ステップ6の暫定描画があれば削除する。
+   検証: `npx vue-tsc -b` かつ `npm run build`（lessons-learnedの教訓どおり最終的に本番ビルドも通ることを確認）。手動確認: サイドバーのボタンで画面が切り替わること、チャットに戻ると会話がそのまま残っていること（AC-3全体）、モニタリング画面表示中のみDevToolsのNetworkタブに `/api/monitoring/snapshot` が出ること（AC-7）
 
-8. **フロントエンド: 描画コンポーネント新規作成とMessageBubble組み込み**
-   - 対象: `frontend/src/components/TableView.vue`（新規）, `frontend/src/components/BarChartView.vue`（新規）, `frontend/src/components/MessageBubble.vue`（変更）
-   - 内容: 上記Approach通りに実装する。`v-html` を使用しないこと、`BarChartView` の幅計算は自前で算出した数値のみを `:style` に渡すことを徹底する
-   - 確認方法: フロント・バックエンド双方を起動し、「今月の問い合わせ件数を担当者別にまとめて」を送信して表と棒グラフが吹き出し内に表示されることを目視確認（AC-1の前半）
-
-9. **結合の手動確認一式（AC-1, 2, 3, 5, 6, 7）**
-   - 対象: コード変更なし（検証のみ）
-   - 内容:
-     - AC-1: 「今月の問い合わせ件数を担当者別にまとめて」→ 要約テキスト＋表＋棒グラフ表示を確認
-     - AC-2: 「カテゴリ別の問い合わせ件数を見せて」→ AC-1と異なるデータの表＋棒グラフを確認
-     - AC-3: 「こんにちは」→ 表・グラフなしの案内テキストのみ、「エコー: 」が含まれないことを確認
-     - AC-5: 一時的な手段（例: `MockChatService` の1シナリオを `"type":"pie_chart"` 等の未知typeに書き換えて再起動する、または `chatApi.ts` の検証関数呼び出し箇所に一時的なテスト用不正データを注入する）で、「応答を表示できませんでした」の吹き出しが表示され、他のUI操作（入力・送信・会話切替）が可能なままであることを確認したのち、変更を元に戻す
-     - AC-6: バックエンドを停止した状態で送信し、「エラー: 応答を取得できませんでした」が表示されることを確認（既存動作の非退行確認）
-     - AC-7: 表・グラフを含む会話から別の会話へSidebarで切り替え、元の会話に戻った際に表・グラフが再描画されることを確認
+8. **結合の手動受け入れ確認（AC-4, AC-5, AC-6, AC-8）**。バックエンド・フロントエンドを起動した状態で以下を確認する。
+   - AC-4: モニタリング画面を数十秒開いたままにし、5秒ごとに数値・ゲージ・最終更新時刻がページリロードなしに更新されることを確認。
+   - AC-5: 数分間観察し、いずれかのノード枠またはエッジがいったん黄（70%以上）または赤（90%以上）に変化し、その後正常色（緑）に戻ることを確認。時間がかかる場合は `MonitoringMetricsService` の `SPIKE_MEAN_INTERVAL_TICKS`/`SPIKE_DURATION_TICKS` を一時的に小さくして確認を早めてよい（確認後は既定値に戻す）。
+   - AC-6: モニタリング画面表示中にバックエンドプロセスを停止し、直前の図が維持されたままエラーバナーが表示されることを確認。バックエンドを再起動し、次のポーリング成功時にバナーが消えて更新が再開することを確認。
+   - AC-8: `MonitoringMetricsService`（または一時的な検証用エンドポイント／ブラウザDevToolsのローカルオーバーライド機能）で応答から必須フィールド（例: `nodes[0].cpuPercent`）を一時的に欠落させ、フロントエンドがクラッシュせずエラー表示（バナーまたは全面エラー）になることを確認する。確認後は元に戻す。
 
 ## Risks / edge cases
 
-- **`type` フィールドの自動注入の検証漏れ**: `As.PROPERTY` 方式はレコードに `type` フィールドが存在しないため、シリアライズ結果に本当に `"type":"table"` 等が出力されるかをステップ3で必ずJSON実物を見て確認すること（ユニットテストの `jsonPath("$.components[0].type")` アサーションで担保する）
-- **既存テスト・ファイルの消し忘れ**: `EchoService.java` / `EchoServiceTest.java` を削除し忘れると、コンパイルは通っても「エコー」応答という廃止済み仕様のテストが残存し続け、AC-3（エコー応答が返らないこと）の意図と矛盾する。削除を明示的なステップの一部として実施すること
-- **表・グラフの配列長不整合**: `rows` の各行長が `columns.length` と異なる、`labels` と `values` の長さが異なるデータをバックエンドが誤って返した場合、フロントの検証ロジックがこれを不正とみなしエラー吹き出しにフォールバックする（クラッシュはしない）。手動確認の対象ではないが、モックデータ作成時に長さを揃えることを徹底する
-- **棒グラフの0除算**: `values` が全て0または空配列の場合に最大値0で除算しないよう、`BarChartView.vue` 側でガードすること
-- **`vue-tsc` でのテンプレート内の判別共用体の絞り込み**: `v-for` 内で `component.type === 'table'` による分岐を行う際、SFCの型チェックで正しく `TableComponent` に絞り込まれない場合は、算出プロパティや型ガード関数（`isTableComponent(c): c is TableComponent`）を用意して対応する
-- **フロント・バックエンド間の破壊的変更**: `POST /api/chat` のレスポンス形式が非互換に変わるため、フロント・バックエンドの新旧バージョンを混在させて動作確認しないこと（要件の前提通り互換維持は不要だが、手動確認時に両方を最新にしてから起動する）
-- **XSS再発防止**: 表セル・グラフのラベル/タイトルは必ずテキスト補間（`{{ }}`）で描画し、`v-html` や `innerHTML` を使わないこと。棒グラフの `:style` に渡す値は自前で計算した数値（0〜100の幅%）のみとし、レスポンス由来の文字列をそのままstyle文字列に埋め込まないこと
+- **「1回のGET呼び出し＝1ティック」という単純化**: バックエンドは実時刻ベースのスケジューラを持たず、フロントの5秒ポーリング頻度に依存してスパイクの体感ペース（平均60秒に1回・15秒持続）が決まる設計とした。手動テストやデバッグ目的で `curl` 等を高頻度・低頻度で叩くと、要件文の秒数どおりのペースにはならない（AC-2は自動テストで値の変動と値域のみを検証しており時間軸は検証対象外なので問題ないが、AC-5の手動確認は実際にフロントの5秒ポーリング経由で行うこと）。
+- **バックエンドの状態共有と並行アクセス**: `MonitoringMetricsService` はSpringのシングルトンBeanでミュータブルな状態を持つ（チャット機能のステートレス方針の明示的例外）。複数タブ・複数ユーザーが同時にポーリングした場合、全員が同じグローバルな乱数系列・スパイクを共有する（本デモの想定内。個別セッションごとの状態分離はスコープ外）。`getSnapshot()` は `synchronized` とし、同時リクエストによる状態破壊を防ぐ。
+- **ノードID不整合**: バックエンドのトポロジー定義（`MonitoringMetricsService`）とフロントの座標定義（`constants/monitoringLayout.ts`）は独立したハードコードであり、片方だけを変更すると描画が崩れる。`TopologyDiagram.vue` は未知のノードID/エッジIDを検出したら例外を投げずに黙ってスキップする防御的実装とし、クラッシュは避けるが表示欠落には気づきにくい。トポロジーを変更する際は両ファイルを必ず同時に更新することをコード上のコメントで明記する。
+- **値のクランプ**: ランダムウォーク＋平均回帰＋スパイクの組み合わせで丸め誤差により `0` 未満や `100` 超になり得るため、必ず最終ステップで `clamp(0, 100)` を適用すること。特にスパイクのピーク方向への強い補正とランダムノイズの組み合わせ箇所で範囲外に出ないことをテストで担保する（実装ステップ1のテストで担保）。
+- **色の判別性（非機能要件）**: ライト/ダーク両テーマで `emerald-500`/`amber-500`/`rose-500`（`dark:` バリアント込み）が判別できることを手動確認する。色だけに依存しないよう、ゲージ・数値ラベルを必ず併記する設計になっていることを実装時に崩さないこと。
+- **既存チャット機能への影響ゼロの担保**: `ChatController`/`MockChatService`/`UiComponent`/`chatApi.ts`/`chat.ts`/`conversationStore.ts` は変更しない設計だが、`@SpringBootTest` を使う `ChatControllerTest` は同一Springコンテキストで新規Bean（`MonitoringController`/`MonitoringMetricsService`）も起動対象になる。新規Beanの初期化が失敗するとチャット側のテストも巻き添えで失敗するため、ステップ2で `./mvnw test`（全テスト）を必ず実行し回帰がないことを確認する。
+- **ポーリングの二重登録・リーク**: `startPolling()` は `pollTimerId !== null` を必ずガードし、`stopPolling()` は `MonitoringView.vue` の `onUnmounted` で確実に呼ばれる設計とする。将来的にモニタリング画面表示中にブラウザタブを閉じる/リロードするケースはブラウザ側がタイマーを破棄するため考慮不要（Non-goalsの「タブ非表示時の停止」は対象外のまま）。
 
 ## Test strategy
 
-**バックエンド（自動テスト、AC-4・AC-9）**
-- 単体テスト（`MockChatServiceTest`）: 担当者系キーワード・カテゴリ系キーワード・非マッチの3パターンで `reply` 文言と `components` の型・件数・値を検証
-- 統合テスト（`ChatControllerTest`, MockMvc）: 担当者系キーワード入力で `components` に `table` と `bar_chart` を含む構造化JSONが返ることを `jsonPath` で確認、非マッチ入力で `components` が空配列であることを確認、空白のみメッセージで400が返る既存動作（AC-9）を維持
-- `./mvnw test` で全テストgreenを確認
-
-**フロントエンド（手動確認、AC-1・2・3・5・6・7）**
-- 実装ステップ9に記載の手順一式を、フロント・バックエンド両方を起動した状態で通しで実施する
-- ブラウザ開発者ツールのConsoleでVueのエラー・警告が出ていないこと（特にAC-5確認時）も併せて確認する
-
-**契約文書の整合性確認（手動確認、AC-8）**
-- `docs/chat-response-schema.md` のサンプルJSONと、`ChatControllerTest` のアサーション対象JSON・実際のcurl結果を突き合わせ、フィールド名・型・値が一致することを確認する
+- **バックエンド自動テスト（JUnit / AssertJ、既存 `MockChatServiceTest`/`ChatControllerTest` と同じ構成に合わせる）**:
+  - `MonitoringMetricsServiceTest`: トポロジー形状（ノード9件・エッジ12件、エッジの `sourceId`/`targetId` がすべて存在するノードIDであること）、初回スナップショットの全メトリクスが `[0, 100]` に収まること（AC-1）、複数回連続呼び出しで値が変動しつつ常に値域内であること（AC-2）。
+  - `MonitoringControllerTest`: `MockMvc` で `GET /api/monitoring/snapshot` が200を返し、レスポンスJSONの構造（`nodes`/`edges` のサイズ・代表フィールドの型）が期待どおりであること（AC-1のHTTPレベル確認）。
+  - 回帰確認として `./mvnw test` をステップ2以降で必ず全件実行し、既存の `ChatControllerTest`/`MockChatServiceTest`/`ChatBackendApplicationTests` がグリーンのままであることを確認する。
+- **フロントエンド型検証**: 本リポジトリに自動テストランナー（vitest等）は未導入のため、`npx vue-tsc -b`（lessons-learnedの教訓どおり、bareの `vue-tsc --noEmit` は使わない）と最終的な `npm run build` を型・ビルドの唯一の自動チェックとする。各実装ステップの直後に `npx vue-tsc -b` を実行し早期に型不整合を検知する。
+- **手動確認（AC-3〜AC-8）**: `./mvnw spring-boot:run` と `npm run dev`（Viteの `/api` プロキシ経由でバックエンドに到達）を起動した状態で、実装ステップ6〜8に記載した手順に沿って画面切替・ポーリング・色変化・エラーハンドリングを目視確認する。特にAC-7（チャット画面表示中は新APIへのリクエストが発生しない）はブラウザDevToolsのNetworkタブでの確認が必須（自動テスト化しない）。
+- **AC-8（不正応答時のフロントエンドの安全性）の具体的手順**: `MonitoringMetricsService.getSnapshot()` を一時的に改変して必須フィールド（例: `cpuPercent`）を欠いたJSONを返すようにする、またはブラウザDevToolsのローカルオーバーライド機能で `/api/monitoring/snapshot` のレスポンスを一時的に改変し、`monitoringApi.ts` の検証によってフロントエンドがクラッシュせずエラー表示（バナーまたは全面エラー）になることを確認する。確認後は変更を必ず元に戻す。

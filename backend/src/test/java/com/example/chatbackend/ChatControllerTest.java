@@ -2,6 +2,7 @@ package com.example.chatbackend;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -55,12 +56,75 @@ class ChatControllerTest {
 	}
 
 	@Test
+	void chatReturnsDailyTrendScenarioForDailyKeyword() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"直近14日間の日別問い合わせ\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", containsString("直近14日間の日別問い合わせ件数をまとめました。")))
+				.andExpect(jsonPath("$.components[0].type", is("trend_chart")))
+				.andExpect(jsonPath("$.components[0].title", is("日別問い合わせ件数（直近14日間）")))
+				.andExpect(jsonPath("$.components[0].labels", hasSize(14)))
+				.andExpect(jsonPath("$.components[0].values", hasSize(14)))
+				.andExpect(jsonPath("$.components[0].average", is(6.4)));
+	}
+
+	@Test
 	void chatReturnsGuidanceTextWithoutComponentsForNonMatchingMessage() throws Exception {
 		mockMvc.perform(post("/api/chat")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"message\":\"こんにちは\"}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.reply", not(containsString("エコー"))))
+				.andExpect(jsonPath("$.components", empty()));
+	}
+
+	@Test
+	void chatReturnsChoicesForInquiryTrigger() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"新規問い合わせ\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("問い合わせのカテゴリを選んでください。")))
+				.andExpect(jsonPath("$.components[0].type", is("choices")))
+				.andExpect(jsonPath("$.components[0].options",
+						is(List.of("カテゴリ: 請求", "カテゴリ: 技術", "カテゴリ: アカウント", "カテゴリ: その他", "キャンセル"))));
+	}
+
+	@Test
+	void chatReturnsUrgencyChoicesNotCategoryReportForCategoryAnswer() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"カテゴリ: 請求\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("緊急度を選んでください。")))
+				.andExpect(jsonPath("$.components[0].type", is("choices")))
+				.andExpect(jsonPath("$.components[0].options",
+						is(List.of("緊急度: 高", "緊急度: 中", "緊急度: 低", "キャンセル"))));
+	}
+
+	@Test
+	void chatReturnsConfirmationForInquirySummary() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("以下の内容で登録してよろしいですか？")))
+				.andExpect(jsonPath("$.components[0].type", is("table")))
+				.andExpect(jsonPath("$.components[0].columns", is(List.of("項目", "内容"))))
+				.andExpect(jsonPath("$.components[0].rows[0]", is(List.of("カテゴリ", "請求"))))
+				.andExpect(jsonPath("$.components[0].rows[2]", is(List.of("内容", "請求額が二重になっている"))))
+				.andExpect(jsonPath("$.components[1].type", is("choices")))
+				.andExpect(jsonPath("$.components[1].options", is(List.of("登録する", "やり直す", "キャンセル"))));
+	}
+
+	@Test
+	void chatReturnsCompletionForSubmit() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"登録する\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("問い合わせを受け付けました。受付番号: INQ-0001")))
 				.andExpect(jsonPath("$.components", empty()));
 	}
 
