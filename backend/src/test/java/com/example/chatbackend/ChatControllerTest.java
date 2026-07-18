@@ -104,10 +104,48 @@ class ChatControllerTest {
 	}
 
 	@Test
-	void chatReturnsConfirmationForInquirySummary() throws Exception {
+	void chatReturnsFaqPresentationForInquirySummary() throws Exception {
 		mockMvc.perform(post("/api/chat")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"message\":\"カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("ご登録の前に、関連するFAQをご確認ください。")))
+				.andExpect(jsonPath("$.components[0].type", is("faq_list")))
+				.andExpect(jsonPath("$.components[0].titles",
+						is(List.of("請求額が二重に表示される場合", "請求書の再発行方法", "支払い方法の変更手順"))))
+				.andExpect(jsonPath("$.components[1].type", is("choices")))
+				.andExpect(jsonPath("$.components[1].options", is(List.of("解決した", "解決しないので問い合わせる"))));
+	}
+
+	@Test
+	void chatReturnsFaqDetailWithFaqListAndChoicesForFaqAnswer() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"FAQ: 請求額が二重に表示される場合\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", containsString("決済処理の反映タイミングのずれ")))
+				.andExpect(jsonPath("$.components[0].type", is("faq_list")))
+				.andExpect(jsonPath("$.components[0].titles",
+						is(List.of("請求額が二重に表示される場合", "請求書の再発行方法", "支払い方法の変更手順"))))
+				.andExpect(jsonPath("$.components[1].type", is("choices")))
+				.andExpect(jsonPath("$.components[1].options", is(List.of("解決した", "解決しないので問い合わせる"))));
+	}
+
+	@Test
+	void chatReturnsCompletionMessageForFaqResolved() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"解決した\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", is("解決してよかったです。またご不明な点があればお気軽にお尋ねください。")))
+				.andExpect(jsonPath("$.components", empty()));
+	}
+
+	@Test
+	void chatReturnsConfirmationForFaqUnresolvedWithSummary() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"解決しないので問い合わせる / カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている\"}"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.reply", is("以下の内容で登録してよろしいですか？")))
 				.andExpect(jsonPath("$.components[0].type", is("table")))
