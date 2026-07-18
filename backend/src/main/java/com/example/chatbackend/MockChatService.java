@@ -1,5 +1,8 @@
 package com.example.chatbackend;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +12,12 @@ public class MockChatService {
 	private static final String ASSIGNEE_KEYWORD = "担当";
 	private static final String CATEGORY_KEYWORD = "カテゴリ";
 	private static final String TYPE_KEYWORD = "種別";
+	private static final String DAILY_KEYWORD = "日別";
+
+	private static final int DAILY_TREND_DAYS = 14;
+	private static final List<Double> DAILY_TREND_VALUES = List.of(
+			8.0, 5.0, 3.0, 9.0, 6.0, 4.0, 7.0, 10.0, 6.0, 5.0, 8.0, 3.0, 6.0, 9.0);
+	private static final DateTimeFormatter DAILY_TREND_LABEL_FORMAT = DateTimeFormatter.ofPattern("M/d");
 
 	private static final String INQUIRY_TRIGGER = "新規問い合わせ";
 	private static final String CATEGORY_ANSWER_PREFIX = "カテゴリ: ";
@@ -26,6 +35,9 @@ public class MockChatService {
 		ChatResponse inquiryResponse = inquiryFlowResponse(message);
 		if (inquiryResponse != null) {
 			return inquiryResponse;
+		}
+		if (message.contains(DAILY_KEYWORD)) {
+			return dailyTrendScenario();
 		}
 		if (message.contains(ASSIGNEE_KEYWORD)) {
 			return assigneeScenario();
@@ -142,6 +154,24 @@ public class MockChatService {
 				List.of("請求", "技術", "アカウント", "その他"),
 				List.of(15.0, 11.0, 6.0, 4.0));
 		return new ChatResponse("カテゴリ別の問い合わせ件数をまとめました。", List.of(table, barChart));
+	}
+
+	private ChatResponse dailyTrendScenario() {
+		List<String> labels = new ArrayList<>();
+		LocalDate today = LocalDate.now();
+		for (int i = DAILY_TREND_DAYS - 1; i >= 0; i--) {
+			labels.add(today.minusDays(i).format(DAILY_TREND_LABEL_FORMAT));
+		}
+		double average = DAILY_TREND_VALUES.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+		double roundedAverage = Math.round(average * 10) / 10.0;
+		TrendChartComponent trendChart = new TrendChartComponent(
+				"日別問い合わせ件数（直近" + DAILY_TREND_DAYS + "日間）",
+				labels,
+				DAILY_TREND_VALUES,
+				roundedAverage);
+		return new ChatResponse(
+				"直近" + DAILY_TREND_DAYS + "日間の日別問い合わせ件数をまとめました。平均は1日あたり約" + roundedAverage + "件です。",
+				List.of(trendChart));
 	}
 
 	private ChatResponse fallbackScenario() {

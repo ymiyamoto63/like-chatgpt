@@ -30,58 +30,24 @@ function onKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="message-input">
-    <textarea
-      v-model="text"
-      class="input"
-      rows="1"
-      placeholder="メッセージを入力..."
-      :disabled="disabled"
-      @keydown="onKeydown"
-    />
-    <button
-      type="button"
-      class="send-button"
-      :disabled="!canSend || disabled"
-      @click="submit"
-    >
-      送信
-    </button>
+  <div class="shrink-0 border-t border-zinc-200 dark:border-zinc-800">
+    <div class="mx-auto flex max-w-3xl items-end gap-2 px-5 py-4">
+      <textarea
+        v-model="text"
+        class="min-h-0 flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-[15px] text-zinc-900 placeholder-zinc-400 transition-shadow outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder-zinc-500 dark:disabled:bg-zinc-800"
+        rows="1"
+        placeholder="メッセージを入力..."
+        :disabled="disabled"
+        @keydown="onKeydown"
+      />
+      <button
+        type="button"
+        class="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
+        :disabled="!canSend || disabled"
+        @click="submit"
+      >
+        送信
+      </button>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.message-input {
-  display: flex;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.input {
-  flex: 1;
-  resize: none;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font: inherit;
-  color: var(--text-h);
-  background: var(--bg);
-}
-
-.send-button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  cursor: pointer;
-}
-
-.send-button:disabled {
-  background: var(--code-bg);
-  color: var(--text);
-  cursor: not-allowed;
-}
-</style>

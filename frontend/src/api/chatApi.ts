@@ -2,6 +2,7 @@ import type {
   BarChartComponent,
   ChoicesComponent,
   TableComponent,
+  TrendChartComponent,
   UiComponentSpec,
 } from '../types/chat'
 
@@ -46,6 +47,23 @@ function isValidChoicesComponent(value: unknown): value is ChoicesComponent {
   return isStringArray(options) && options.length > 0
 }
 
+function isValidTrendChartComponent(value: unknown): value is TrendChartComponent {
+  const { title, labels, values, average } = value as Record<string, unknown>
+  if (typeof title !== 'string') {
+    return false
+  }
+  if (!isStringArray(labels) || labels.length === 0) {
+    return false
+  }
+  if (!Array.isArray(values) || values.length !== labels.length) {
+    return false
+  }
+  if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    return false
+  }
+  return typeof average === 'number' && Number.isFinite(average)
+}
+
 function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -59,6 +77,9 @@ function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   }
   if (record.type === 'choices') {
     return isValidChoicesComponent(record)
+  }
+  if (record.type === 'trend_chart') {
+    return isValidTrendChartComponent(record)
   }
   return false
 }

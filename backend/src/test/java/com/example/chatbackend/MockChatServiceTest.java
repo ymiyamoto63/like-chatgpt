@@ -2,6 +2,8 @@ package com.example.chatbackend;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -57,6 +59,22 @@ class MockChatServiceTest {
 
 		assertThat(response.reply()).isEqualTo("カテゴリ別の問い合わせ件数をまとめました。");
 		assertThat(response.components()).hasSize(2);
+	}
+
+	@Test
+	void dailyKeywordReturnsDailyTrendScenario() {
+		ChatResponse response = mockChatService.generateResponse("直近14日間の日別問い合わせ");
+
+		assertThat(response.reply()).contains("直近14日間の日別問い合わせ件数をまとめました。");
+		assertThat(response.components()).hasSize(1);
+
+		TrendChartComponent trendChart = (TrendChartComponent) response.components().get(0);
+		assertThat(trendChart.title()).isEqualTo("日別問い合わせ件数（直近14日間）");
+		assertThat(trendChart.labels()).hasSize(14);
+		assertThat(trendChart.labels().get(13))
+				.isEqualTo(LocalDate.now().format(DateTimeFormatter.ofPattern("M/d")));
+		assertThat(trendChart.values()).hasSize(14);
+		assertThat(trendChart.average()).isEqualTo(6.4);
 	}
 
 	@Test

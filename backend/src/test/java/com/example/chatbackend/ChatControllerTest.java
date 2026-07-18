@@ -2,6 +2,7 @@ package com.example.chatbackend;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -52,6 +53,20 @@ class ChatControllerTest {
 				.andExpect(jsonPath("$.components[1].type", is("bar_chart")))
 				.andExpect(jsonPath("$.components[1].title", is("カテゴリ別 問い合わせ件数")))
 				.andExpect(jsonPath("$.components[1].values[0]", is(15.0)));
+	}
+
+	@Test
+	void chatReturnsDailyTrendScenarioForDailyKeyword() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"直近14日間の日別問い合わせ\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.reply", containsString("直近14日間の日別問い合わせ件数をまとめました。")))
+				.andExpect(jsonPath("$.components[0].type", is("trend_chart")))
+				.andExpect(jsonPath("$.components[0].title", is("日別問い合わせ件数（直近14日間）")))
+				.andExpect(jsonPath("$.components[0].labels", hasSize(14)))
+				.andExpect(jsonPath("$.components[0].values", hasSize(14)))
+				.andExpect(jsonPath("$.components[0].average", is(6.4)));
 	}
 
 	@Test
