@@ -1,0 +1,12 @@
+# Pipeline State
+- Issue: #4
+- Branch: feature/4-ports-and-adapters
+- Base SHA: 11dce1fbf70dc8d1b78230aeecc2a8827e40af6e
+- Mode: auto
+- Commands: backend: ./mvnw test（backend/ で実行。ビルド確認は ./mvnw -q compile）/ frontend: 変更なし（今回不要）
+- [x] 1. requirements（承認済み、Issue #4 作成済み）
+- [ ] 2. design
+- [ ] 3. implementation
+- [ ] 4. testing（retry 0/3）
+- [ ] 5. review（retry 0/2）
+- [ ] 6. publish
