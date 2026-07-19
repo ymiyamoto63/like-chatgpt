@@ -1,8 +1,8 @@
 package com.example.chatbackend.service;
 
-import com.example.chatbackend.dto.monitoring.MonitoringEdge;
-import com.example.chatbackend.dto.monitoring.MonitoringNode;
-import com.example.chatbackend.dto.monitoring.MonitoringSnapshot;
+import com.example.chatbackend.domain.monitoring.MonitoringEdge;
+import com.example.chatbackend.domain.monitoring.MonitoringNode;
+import com.example.chatbackend.domain.monitoring.MonitoringSnapshot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -1,12 +1,12 @@
 package com.example.chatbackend.service;
 
-import com.example.chatbackend.dto.chat.ChatResponse;
-import com.example.chatbackend.dto.component.BarChartComponent;
-import com.example.chatbackend.dto.component.ChoicesComponent;
-import com.example.chatbackend.dto.component.FaqListComponent;
-import com.example.chatbackend.dto.component.TableComponent;
-import com.example.chatbackend.dto.component.TrendChartComponent;
-import com.example.chatbackend.repository.FaqEntry;
+import com.example.chatbackend.domain.chat.ChatResponse;
+import com.example.chatbackend.domain.chat.component.BarChartComponent;
+import com.example.chatbackend.domain.chat.component.ChoicesComponent;
+import com.example.chatbackend.domain.chat.component.FaqListComponent;
+import com.example.chatbackend.domain.chat.component.TableComponent;
+import com.example.chatbackend.domain.chat.component.TrendChartComponent;
+import com.example.chatbackend.domain.faq.FaqEntry;
 import com.example.chatbackend.repository.FaqRepository;
 
 import java.time.LocalDate;

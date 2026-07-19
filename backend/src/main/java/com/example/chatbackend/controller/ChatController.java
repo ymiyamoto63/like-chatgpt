@@ -1,7 +1,7 @@
 package com.example.chatbackend.controller;
 
-import com.example.chatbackend.dto.chat.ChatRequest;
-import com.example.chatbackend.dto.chat.ChatResponse;
+import com.example.chatbackend.domain.chat.ChatRequest;
+import com.example.chatbackend.domain.chat.ChatResponse;
 import com.example.chatbackend.service.MockChatService;
 
 import jakarta.validation.Valid;

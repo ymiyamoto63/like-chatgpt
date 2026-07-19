@@ -1,6 +1,6 @@
 package com.example.chatbackend.controller;
 
-import com.example.chatbackend.dto.monitoring.MonitoringSnapshot;
+import com.example.chatbackend.domain.monitoring.MonitoringSnapshot;
 import com.example.chatbackend.service.MonitoringMetricsService;
 
 import org.springframework.web.bind.annotation.GetMapping;

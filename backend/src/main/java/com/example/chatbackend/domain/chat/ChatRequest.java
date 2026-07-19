@@ -1,4 +1,4 @@
-package com.example.chatbackend.dto.chat;
+package com.example.chatbackend.domain.chat;
 
 import jakarta.validation.constraints.NotBlank;
 

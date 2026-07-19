@@ -1,5 +1,6 @@
 package com.example.chatbackend.repository;
 
+import com.example.chatbackend.domain.faq.FaqEntry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

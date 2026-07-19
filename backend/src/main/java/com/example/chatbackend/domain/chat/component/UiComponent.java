@@ -1,4 +1,4 @@
-package com.example.chatbackend.dto.component;
+package com.example.chatbackend.domain.chat.component;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;

@@ -1,4 +1,4 @@
-package com.example.chatbackend.dto.suggest;
+package com.example.chatbackend.domain.suggest;
 
 public record SuggestResponse(String completion) {
 
