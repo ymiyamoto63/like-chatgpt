@@ -7,6 +7,6 @@
 - [x] 1. requirements（承認済み、Issue #4 作成済み）
 - [x] 2. design（Issueコメント投稿済み）
 - [x] 3. implementation（step 8/9 完了、step 9 の自動検証はテストフェーズ・手動確認AC-4は公開前に実施）
-- [ ] 4. testing（retry 0/3）
-- [ ] 5. review（retry 0/2）
+- [x] 4. testing（PASS 53件、retry 0/3。AC-4 手動確認のみ未実施）
+- [x] 5. review（blocking指摘なし、retry 0/2）
 - [ ] 6. publish
