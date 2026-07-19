@@ -1,12 +1,13 @@
-package com.example.chatbackend.service;
+package com.example.chatbackend.adapter.out.suggest;
 
+import com.example.chatbackend.application.port.out.SuggestionGenerationPort;
 import com.example.chatbackend.domain.suggest.SuggestResponse;
 
 import java.util.List;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
-public class MockSuggestService {
+@Component
+public class CannedPhraseSuggestionAdapter implements SuggestionGenerationPort {
 
 	// 補完対象の定型文。値は frontend/src/constants/reportButtons.ts の
 	// 同名定数と一致させること（言語をまたぐため自動同期はできない）
@@ -15,7 +16,8 @@ public class MockSuggestService {
 			"当月カテゴリ別問い合わせ",
 			"直近14日間の日別問い合わせ");
 
-	public SuggestResponse suggest(String text) {
+	@Override
+	public SuggestResponse generateSuggestion(String text) {
 		if (text == null || text.isEmpty()) {
 			return SuggestResponse.empty();
 		}

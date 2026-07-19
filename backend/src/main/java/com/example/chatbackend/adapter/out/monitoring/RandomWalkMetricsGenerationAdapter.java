@@ -1,5 +1,7 @@
-package com.example.chatbackend.service;
+package com.example.chatbackend.adapter.out.monitoring;
 
+import com.example.chatbackend.adapter.out.reply.KeywordMatchReplyGenerationAdapter;
+import com.example.chatbackend.application.port.out.MetricsGenerationPort;
 import com.example.chatbackend.domain.monitoring.MonitoringEdge;
 import com.example.chatbackend.domain.monitoring.MonitoringNode;
 import com.example.chatbackend.domain.monitoring.MonitoringSnapshot;
@@ -10,21 +12,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
  * 固定トポロジーのメトリクスをランダムウォーク＋周期スパイクで生成する。
  *
  * このクラスはSpringのシングルトンBeanとしてミュータブルな前回値状態をインスタンスフィールドに保持する。
- * これは本プロジェクトの「モックデータ生成はステートレス」という既存方針（{@link MockChatService} 参照）の
+ * これは本プロジェクトの「モックデータ生成はステートレス」という既存方針（{@link KeywordMatchReplyGenerationAdapter} 参照）の
  * 明示的な例外である。状態はサーバ再起動でリセットされてよい（永続化しない）。
  *
- * 「1回の {@link #getSnapshot()} 呼び出し＝1ティック」という単純化を採用しており、実時刻ベースのスケジューラは
+ * 「1回の {@link #generateSnapshot()} 呼び出し＝1ティック」という単純化を採用しており、実時刻ベースのスケジューラは
  * 持たない。スパイクの間隔・持続時間はすべてティック数で管理する（フロントエンドが5秒間隔でポーリングし続ける
  * 前提で、設計書記載の秒数感覚（平均60秒に1回・15秒持続）に一致する）。
  */
-@Service
-public class MonitoringMetricsService {
+@Component
+public class RandomWalkMetricsGenerationAdapter implements MetricsGenerationPort {
 
 	private static final double RANDOM_WALK_STEP = 3.0;
 	private static final double MEAN_REVERSION_FACTOR = 0.05;
@@ -99,7 +101,7 @@ public class MonitoringMetricsService {
 	private long spikeEndsAtTick = -1;
 	private long nextSpikeEligibleAtTick;
 
-	public MonitoringMetricsService() {
+	public RandomWalkMetricsGenerationAdapter() {
 		for (NodeDefinition definition : NODE_DEFINITIONS) {
 			nodeCpuStates.put(definition.id(), new MetricState(definition.baselineCpu()));
 			nodeMemoryStates.put(definition.id(), new MetricState(definition.baselineMemory()));
@@ -113,7 +115,8 @@ public class MonitoringMetricsService {
 		nextSpikeEligibleAtTick = randomSpikeIntervalTicks();
 	}
 
-	public synchronized MonitoringSnapshot getSnapshot() {
+	@Override
+	public synchronized MonitoringSnapshot generateSnapshot() {
 		tickCount++;
 		processSpikeLifecycle();
 		updateAllSeries();

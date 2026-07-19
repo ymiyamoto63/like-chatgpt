@@ -76,3 +76,47 @@ design.md の Implementation steps 3〜9（FAQ 出力ポート抽出、chat/sugg
 ### スコープ外（今回未実装）
 
 design.md の Implementation steps 5〜9（suggest/monitoring のヘキサゴナル化、ArchUnit ルールテスト本体、ドキュメント追随、全体検証）は本タスクの指示によりステップ3〜4のみに限定したため未実装。
+
+## step 5-6
+
+対象: `docs/pipeline/4/design.md` の Implementation steps 5〜6（ステップ1〜4は完了済み、ステップ7以降は未実装）。
+
+### ステップ5: suggest 機能のヘキサゴナル化（FR-2, FR-8）
+
+- 新規: `application/port/in/GenerateSuggestionUseCase.java`（`SuggestResponse generateSuggestion(SuggestRequest request)`）。
+- 新規: `application/port/out/SuggestionGenerationPort.java`（`SuggestResponse generateSuggestion(String text)`）。
+- 新規: `application/service/SuggestService.java`（Spring アノテーションなしのPOJO。`GenerateSuggestionUseCase` を実装し `suggestionGenerationPort.generateSuggestion(request.text())` に委譲するのみ）。
+- `service/MockSuggestService.java` を `git mv` で `adapter/out/suggest/CannedPhraseSuggestionAdapter.java` に移動。クラス名を変更し `SuggestionGenerationPort` を実装、`suggest(String)` → `generateSuggestion(String)`（`@Override` 付与）にリネーム。定型文定数（`CANNED_PHRASES`）・フロントエンド同期コメント・全ロジックは値・コメントとも一字一句変更なし。`@Service` → `@Component` に変更（設計の出力ポート・アダプタ命名対応表どおり）。
+- `controller/SuggestController.java` を `adapter/in/web/SuggestController.java` に `git mv` し、依存を `GenerateSuggestionUseCase` に変更（フィールド名 `generateSuggestionUseCase`、呼び出しは `generateSuggestionUseCase.generateSuggestion(request)`）。
+- `config/ApplicationConfiguration.java` に `GenerateSuggestionUseCase` の `@Bean` メソッドを追加。
+- テスト移動: `service/MockSuggestServiceTest.java` → `adapter/out/suggest/CannedPhraseSuggestionAdapterTest.java`（`git mv`）。パッケージ宣言・クラス名・インスタンス生成の型を `CannedPhraseSuggestionAdapter` に変更し、メソッド呼び出しを `generateSuggestion(...)` に変更。アサーション内容は一切変更なし（フィールド名 `service` は既存のまま据え置き）。
+- テスト移動: `controller/SuggestControllerTest.java` → `adapter/in/web/SuggestControllerTest.java`（`git mv`）。パッケージ宣言のみ変更、内容（アサーション・リクエスト）は不変。
+
+### ステップ6: monitoring 機能のヘキサゴナル化（FR-2, FR-8）
+
+- 新規: `application/port/in/GetMonitoringSnapshotUseCase.java`（`MonitoringSnapshot getSnapshot()`）。
+- 新規: `application/port/out/MetricsGenerationPort.java`（`MonitoringSnapshot generateSnapshot()`）。
+- 新規: `application/service/MonitoringService.java`（Spring アノテーションなしのPOJO。`GetMonitoringSnapshotUseCase` を実装し `metricsGenerationPort.generateSnapshot()` に委譲するのみ）。
+- `service/MonitoringMetricsService.java` を `git mv` で `adapter/out/monitoring/RandomWalkMetricsGenerationAdapter.java` に移動。クラス名・コンストラクタ名を変更し `MetricsGenerationPort` を実装、`getSnapshot()` → `generateSnapshot()`（`@Override` 付与、`synchronized` 維持）にリネーム。ミュータブル状態（`tickCount`・スパイク管理フィールド・`MetricState` マップ群）・ランダムウォーク／スパイクアルゴリズム・トポロジー定義データは値・ロジックとも一字一句変更なし。`@Service` → `@Component` に変更（設計の出力ポート・アダプタ命名対応表どおり。Spring 既定のシングルトンスコープを維持）。
+  - クラスコメント中の dangling Javadoc 参照 `{@link MockChatService}`（step 3-4 で既知の副作用として記録済み）を `{@link KeywordMatchReplyGenerationAdapter}` に修正し、`import com.example.chatbackend.adapter.out.reply.KeywordMatchReplyGenerationAdapter;` を追加してリンクが解決可能な状態にした。`{@link #getSnapshot()}` も `{@link #generateSnapshot()}` に修正。
+- `controller/MonitoringController.java` を `adapter/in/web/MonitoringController.java` に `git mv` し、依存を `GetMonitoringSnapshotUseCase` に変更（フィールド名 `getMonitoringSnapshotUseCase`、呼び出しは `getMonitoringSnapshotUseCase.getSnapshot()`）。
+- `config/ApplicationConfiguration.java` に `GetMonitoringSnapshotUseCase` の `@Bean` メソッドを追加（これで3ユースケースすべての Bean 配線が完了）。
+- テスト移動: `service/MonitoringMetricsServiceTest.java` → `adapter/out/monitoring/RandomWalkMetricsGenerationAdapterTest.java`（`git mv`）。パッケージ宣言・クラス名・インスタンス生成の型を `RandomWalkMetricsGenerationAdapter` に変更し、メソッド呼び出しを `generateSnapshot()` に変更。アサーション内容は一切変更なし（フィールド名 `monitoringMetricsService` は既存のまま据え置き）。
+- テスト移動: `controller/MonitoringControllerTest.java` → `adapter/in/web/MonitoringControllerTest.java`（`git mv`）。パッケージ宣言のみ変更、内容（アサーション・リクエスト）は不変。
+
+### 旧パッケージの削除確認
+
+`find backend/src -path '*/chatbackend/controller*' -o -path '*/chatbackend/service*' -o -path '*/chatbackend/repository*' -o -path '*/chatbackend/dto*'` の結果はゼロ件。旧 `controller/` `service/` `repository/` `dto/` の4パッケージはファイルが残っていないことを確認し、空になったディレクトリ（`main/controller`・`main/repository`・`main/service`・`test/controller`・`test/service`）を `rmdir` で削除した。
+
+### 検証結果
+
+- `cd backend && ./mvnw -q compile` → 成功（警告・エラーなし）
+- `cd backend && ./mvnw test` → `Tests run: 49, Failures: 0, Errors: 0, Skipped: 0` で BUILD SUCCESS（既存テスト含め全件 green。`CannedPhraseSuggestionAdapterTest` 7件、`SuggestControllerTest` 3件、`RandomWalkMetricsGenerationAdapterTest` 3件、`MonitoringControllerTest` 1件を含む）
+
+### 設計からの逸脱
+
+なし。API・JSON 形式は一切変更していない。
+
+### スコープ外（今回未実装）
+
+design.md の Implementation steps 7〜9（ArchUnit ルールテスト本体の追加、ドキュメント参照の追随、全体検証の README 手動確認）は本タスクの指示によりステップ5〜6のみに限定したため未実装。

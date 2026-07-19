@@ -1,4 +1,4 @@
-package com.example.chatbackend.service;
+package com.example.chatbackend.adapter.out.monitoring;
 
 import com.example.chatbackend.domain.monitoring.MonitoringEdge;
 import com.example.chatbackend.domain.monitoring.MonitoringNode;
@@ -14,13 +14,13 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-class MonitoringMetricsServiceTest {
+class RandomWalkMetricsGenerationAdapterTest {
 
-	private final MonitoringMetricsService monitoringMetricsService = new MonitoringMetricsService();
+	private final RandomWalkMetricsGenerationAdapter monitoringMetricsService = new RandomWalkMetricsGenerationAdapter();
 
 	@Test
 	void firstSnapshotReturnsFixedTopologyWithAllMetricsInRange() {
-		MonitoringSnapshot snapshot = monitoringMetricsService.getSnapshot();
+		MonitoringSnapshot snapshot = monitoringMetricsService.generateSnapshot();
 
 		assertThat(snapshot.nodes()).hasSize(9);
 		assertThat(snapshot.edges()).hasSize(12);
@@ -67,7 +67,7 @@ class MonitoringMetricsServiceTest {
 		expectedEdgeConnections.put("app2-dbprimary", new String[] {"app-2", "db-primary"});
 		expectedEdgeConnections.put("dbprimary-dbreplica", new String[] {"db-primary", "db-replica"});
 
-		MonitoringSnapshot snapshot = monitoringMetricsService.getSnapshot();
+		MonitoringSnapshot snapshot = monitoringMetricsService.generateSnapshot();
 
 		assertThat(snapshot.nodes()).hasSize(expectedNodeLabels.size());
 		for (MonitoringNode node : snapshot.nodes()) {
@@ -92,7 +92,7 @@ class MonitoringMetricsServiceTest {
 	void repeatedCallsVaryWhileStayingWithinRange() {
 		List<MonitoringSnapshot> snapshots = new ArrayList<>();
 		for (int i = 0; i < 30; i++) {
-			MonitoringSnapshot snapshot = monitoringMetricsService.getSnapshot();
+			MonitoringSnapshot snapshot = monitoringMetricsService.generateSnapshot();
 			for (MonitoringNode node : snapshot.nodes()) {
 				assertThat(node.cpuPercent()).isBetween(0.0, 100.0);
 				assertThat(node.memoryPercent()).isBetween(0.0, 100.0);
