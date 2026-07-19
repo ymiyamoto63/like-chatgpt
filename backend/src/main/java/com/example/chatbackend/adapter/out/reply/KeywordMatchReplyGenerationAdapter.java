@@ -1,5 +1,7 @@
-package com.example.chatbackend.service;
+package com.example.chatbackend.adapter.out.reply;
 
+import com.example.chatbackend.application.port.out.FaqQueryPort;
+import com.example.chatbackend.application.port.out.ReplyGenerationPort;
 import com.example.chatbackend.domain.chat.ChatResponse;
 import com.example.chatbackend.domain.chat.component.BarChartComponent;
 import com.example.chatbackend.domain.chat.component.ChoicesComponent;
@@ -7,16 +9,15 @@ import com.example.chatbackend.domain.chat.component.FaqListComponent;
 import com.example.chatbackend.domain.chat.component.TableComponent;
 import com.example.chatbackend.domain.chat.component.TrendChartComponent;
 import com.example.chatbackend.domain.faq.FaqEntry;
-import com.example.chatbackend.repository.FaqRepository;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
-public class MockChatService {
+@Component
+public class KeywordMatchReplyGenerationAdapter implements ReplyGenerationPort {
 
 	private static final String ASSIGNEE_KEYWORD = "担当";
 	private static final String CATEGORY_KEYWORD = "カテゴリ";
@@ -51,13 +52,14 @@ public class MockChatService {
 	private static final String FAQ_UNRESOLVED_LABEL = "解決しないので問い合わせる";
 	private static final String FAQ_UNRESOLVED_PREFIX = FAQ_UNRESOLVED_LABEL + " / ";
 
-	private final FaqRepository faqRepository;
+	private final FaqQueryPort faqQueryPort;
 
-	public MockChatService(FaqRepository faqRepository) {
-		this.faqRepository = faqRepository;
+	public KeywordMatchReplyGenerationAdapter(FaqQueryPort faqQueryPort) {
+		this.faqQueryPort = faqQueryPort;
 	}
 
-	public ChatResponse generateResponse(String message) {
+	@Override
+	public ChatResponse generateReply(String message) {
 		// 新規問い合わせフローの定型文は「カテゴリ」等の既存キーワードを含むため、
 		// レポートシナリオより先に判定する
 		ChatResponse inquiryResponse = inquiryFlowResponse(message);
@@ -169,7 +171,7 @@ public class MockChatService {
 	}
 
 	private ChatResponse faqPresentation(InquirySummary summary) {
-		List<String> titles = faqRepository.findTitlesByCategory(summary.category());
+		List<String> titles = faqQueryPort.findTitlesByCategory(summary.category());
 		return new ChatResponse(
 				"ご登録の前に、関連するFAQをご確認ください。",
 				List.of(new FaqListComponent(titles),
@@ -178,11 +180,11 @@ public class MockChatService {
 
 	private ChatResponse faqDetailResponse(String message) {
 		String title = message.substring(FAQ_ANSWER_PREFIX.length());
-		FaqEntry entry = faqRepository.findByTitle(title).orElse(null);
+		FaqEntry entry = faqQueryPort.findByTitle(title).orElse(null);
 		if (entry == null) {
 			return null;
 		}
-		List<String> titles = faqRepository.findTitlesByCategory(entry.category());
+		List<String> titles = faqQueryPort.findTitlesByCategory(entry.category());
 		return new ChatResponse(
 				entry.body(),
 				List.of(new FaqListComponent(titles),

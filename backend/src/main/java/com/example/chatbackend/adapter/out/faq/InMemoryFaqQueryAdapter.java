@@ -1,5 +1,6 @@
-package com.example.chatbackend.repository;
+package com.example.chatbackend.adapter.out.faq;
 
+import com.example.chatbackend.application.port.out.FaqQueryPort;
 import com.example.chatbackend.domain.faq.FaqEntry;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +16,7 @@ import org.springframework.stereotype.Repository;
  * タイトルは全カテゴリを通じて一意（ステートレスなMockがタイトルだけで解決できるための前提）。
  */
 @Repository
-public class FaqRepository {
+public class InMemoryFaqQueryAdapter implements FaqQueryPort {
 
 	private static final List<FaqEntry> FAQ_ENTRIES = List.of(
 			// 請求

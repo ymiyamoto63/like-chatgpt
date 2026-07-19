@@ -6,7 +6,7 @@
 - Commands: backend: ./mvnw test（backend/ で実行。ビルド確認は ./mvnw -q compile）/ frontend: 変更なし（今回不要）
 - [x] 1. requirements（承認済み、Issue #4 作成済み）
 - [x] 2. design（Issueコメント投稿済み）
-- [ ] 3. implementation（step 2/9）
+- [ ] 3. implementation（step 4/9）
 - [ ] 4. testing（retry 0/3）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish

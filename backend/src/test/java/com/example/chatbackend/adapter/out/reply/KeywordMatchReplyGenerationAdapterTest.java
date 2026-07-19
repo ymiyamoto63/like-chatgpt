@@ -1,4 +1,4 @@
-package com.example.chatbackend.service;
+package com.example.chatbackend.adapter.out.reply;
 
 import com.example.chatbackend.domain.chat.ChatResponse;
 import com.example.chatbackend.domain.chat.component.BarChartComponent;
@@ -6,7 +6,7 @@ import com.example.chatbackend.domain.chat.component.ChoicesComponent;
 import com.example.chatbackend.domain.chat.component.FaqListComponent;
 import com.example.chatbackend.domain.chat.component.TableComponent;
 import com.example.chatbackend.domain.chat.component.TrendChartComponent;
-import com.example.chatbackend.repository.FaqRepository;
+import com.example.chatbackend.adapter.out.faq.InMemoryFaqQueryAdapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,13 +15,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-class MockChatServiceTest {
+class KeywordMatchReplyGenerationAdapterTest {
 
-	private final MockChatService mockChatService = new MockChatService(new FaqRepository());
+	private final KeywordMatchReplyGenerationAdapter mockChatService =
+			new KeywordMatchReplyGenerationAdapter(new InMemoryFaqQueryAdapter());
 
 	@Test
 	void assigneeKeywordReturnsAssigneeScenario() {
-		ChatResponse response = mockChatService.generateResponse("今月の問い合わせ件数を担当者別にまとめて");
+		ChatResponse response = mockChatService.generateReply("今月の問い合わせ件数を担当者別にまとめて");
 
 		assertThat(response.reply()).isEqualTo("今月の担当者別の問い合わせ件数をまとめました。");
 		assertThat(response.components()).hasSize(2);
@@ -42,7 +43,7 @@ class MockChatServiceTest {
 
 	@Test
 	void categoryKeywordReturnsCategoryScenario() {
-		ChatResponse response = mockChatService.generateResponse("カテゴリ別の問い合わせ件数を見せて");
+		ChatResponse response = mockChatService.generateReply("カテゴリ別の問い合わせ件数を見せて");
 
 		assertThat(response.reply()).isEqualTo("カテゴリ別の問い合わせ件数をまとめました。");
 		assertThat(response.components()).hasSize(2);
@@ -63,7 +64,7 @@ class MockChatServiceTest {
 
 	@Test
 	void typeKeywordAlsoReturnsCategoryScenario() {
-		ChatResponse response = mockChatService.generateResponse("種別ごとの件数を教えて");
+		ChatResponse response = mockChatService.generateReply("種別ごとの件数を教えて");
 
 		assertThat(response.reply()).isEqualTo("カテゴリ別の問い合わせ件数をまとめました。");
 		assertThat(response.components()).hasSize(2);
@@ -71,7 +72,7 @@ class MockChatServiceTest {
 
 	@Test
 	void dailyKeywordReturnsDailyTrendScenario() {
-		ChatResponse response = mockChatService.generateResponse("直近14日間の日別問い合わせ");
+		ChatResponse response = mockChatService.generateReply("直近14日間の日別問い合わせ");
 
 		assertThat(response.reply()).contains("直近14日間の日別問い合わせ件数をまとめました。");
 		assertThat(response.components()).hasSize(1);
@@ -87,7 +88,7 @@ class MockChatServiceTest {
 
 	@Test
 	void inquiryTriggerReturnsCategoryQuestion() {
-		ChatResponse response = mockChatService.generateResponse("新規問い合わせ");
+		ChatResponse response = mockChatService.generateReply("新規問い合わせ");
 
 		assertThat(response.reply()).isEqualTo("問い合わせのカテゴリを選んでください。");
 		assertThat(response.components()).hasSize(1);
@@ -98,7 +99,7 @@ class MockChatServiceTest {
 
 	@Test
 	void categoryAnswerReturnsUrgencyQuestionNotCategoryReport() {
-		ChatResponse response = mockChatService.generateResponse("カテゴリ: 請求");
+		ChatResponse response = mockChatService.generateReply("カテゴリ: 請求");
 
 		assertThat(response.reply()).isEqualTo("緊急度を選んでください。");
 		assertThat(response.components()).hasSize(1);
@@ -108,7 +109,7 @@ class MockChatServiceTest {
 
 	@Test
 	void urgencyAnswerReturnsContentPrompt() {
-		ChatResponse response = mockChatService.generateResponse("緊急度: 高");
+		ChatResponse response = mockChatService.generateReply("緊急度: 高");
 
 		assertThat(response.reply()).isEqualTo("問い合わせ内容を入力してください。");
 		assertThat(response.components()).isEmpty();
@@ -117,7 +118,7 @@ class MockChatServiceTest {
 	@Test
 	void inquirySummaryReturnsFaqPresentationWithFaqListAndChoices() {
 		ChatResponse response = mockChatService
-				.generateResponse("カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
+				.generateReply("カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
 
 		assertThat(response.reply()).isEqualTo("ご登録の前に、関連するFAQをご確認ください。");
 		assertThat(response.components()).hasSize(2);
@@ -133,7 +134,7 @@ class MockChatServiceTest {
 	@Test
 	void inquirySummaryForTechnicalCategoryReturnsTechnicalFaqs() {
 		ChatResponse response = mockChatService
-				.generateResponse("カテゴリ: 技術 / 緊急度: 中 / 内容: アプリが落ちる");
+				.generateReply("カテゴリ: 技術 / 緊急度: 中 / 内容: アプリが落ちる");
 
 		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
 		assertThat(faqList.titles()).containsExactly(
@@ -143,7 +144,7 @@ class MockChatServiceTest {
 	@Test
 	void inquirySummaryForAccountCategoryReturnsAccountFaqs() {
 		ChatResponse response = mockChatService
-				.generateResponse("カテゴリ: アカウント / 緊急度: 低 / 内容: メールアドレスを変更したい");
+				.generateReply("カテゴリ: アカウント / 緊急度: 低 / 内容: メールアドレスを変更したい");
 
 		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
 		assertThat(faqList.titles()).containsExactly(
@@ -153,7 +154,7 @@ class MockChatServiceTest {
 	@Test
 	void inquirySummaryForOtherCategoryReturnsOtherFaqs() {
 		ChatResponse response = mockChatService
-				.generateResponse("カテゴリ: その他 / 緊急度: 低 / 内容: 営業時間を知りたい");
+				.generateReply("カテゴリ: その他 / 緊急度: 低 / 内容: 営業時間を知りたい");
 
 		FaqListComponent faqList = (FaqListComponent) response.components().get(0);
 		assertThat(faqList.titles()).containsExactly(
@@ -162,7 +163,7 @@ class MockChatServiceTest {
 
 	@Test
 	void faqAnswerReturnsFaqDetailWithFaqListAndChoices() {
-		ChatResponse response = mockChatService.generateResponse("FAQ: 請求額が二重に表示される場合");
+		ChatResponse response = mockChatService.generateReply("FAQ: 請求額が二重に表示される場合");
 
 		assertThat(response.reply()).contains("決済処理の反映タイミングのずれ");
 		assertThat(response.components()).hasSize(2);
@@ -177,7 +178,7 @@ class MockChatServiceTest {
 
 	@Test
 	void faqResolvedReturnsCompletionMessageWithNoComponents() {
-		ChatResponse response = mockChatService.generateResponse("解決した");
+		ChatResponse response = mockChatService.generateReply("解決した");
 
 		assertThat(response.reply()).isEqualTo("解決してよかったです。またご不明な点があればお気軽にお尋ねください。");
 		assertThat(response.components()).isEmpty();
@@ -185,7 +186,7 @@ class MockChatServiceTest {
 
 	@Test
 	void faqUnresolvedWithSummaryReturnsConfirmationWithTableAndChoices() {
-		ChatResponse response = mockChatService.generateResponse(
+		ChatResponse response = mockChatService.generateReply(
 				"解決しないので問い合わせる / カテゴリ: 請求 / 緊急度: 高 / 内容: 請求額が二重になっている");
 
 		assertThat(response.reply()).isEqualTo("以下の内容で登録してよろしいですか？");
@@ -204,7 +205,7 @@ class MockChatServiceTest {
 
 	@Test
 	void submitReturnsCompletionWithReceiptNumber() {
-		ChatResponse response = mockChatService.generateResponse("登録する");
+		ChatResponse response = mockChatService.generateReply("登録する");
 
 		assertThat(response.reply()).isEqualTo("問い合わせを受け付けました。受付番号: INQ-0001");
 		assertThat(response.components()).isEmpty();
@@ -212,7 +213,7 @@ class MockChatServiceTest {
 
 	@Test
 	void retryReturnsCategoryQuestionAgain() {
-		ChatResponse response = mockChatService.generateResponse("やり直す");
+		ChatResponse response = mockChatService.generateReply("やり直す");
 
 		assertThat(response.reply()).isEqualTo("問い合わせのカテゴリを選んでください。");
 		assertThat(response.components()).hasSize(1);
@@ -221,7 +222,7 @@ class MockChatServiceTest {
 
 	@Test
 	void cancelReturnsCancellationMessage() {
-		ChatResponse response = mockChatService.generateResponse("キャンセル");
+		ChatResponse response = mockChatService.generateReply("キャンセル");
 
 		assertThat(response.reply()).isEqualTo("問い合わせの登録を中止しました。");
 		assertThat(response.components()).isEmpty();
@@ -229,7 +230,7 @@ class MockChatServiceTest {
 
 	@Test
 	void nonMatchingMessageReturnsFallbackScenario() {
-		ChatResponse response = mockChatService.generateResponse("こんにちは");
+		ChatResponse response = mockChatService.generateReply("こんにちは");
 
 		assertThat(response.reply())
 				.isEqualTo("『今月の問い合わせ件数を担当者別にまとめて』のように聞いてください。表やグラフでお答えします。");
@@ -238,7 +239,7 @@ class MockChatServiceTest {
 
 	@Test
 	void cpuAlertCauseQuestionReturnsCpuCauseAnalysis() {
-		ChatResponse response = mockChatService.generateResponse("Web-1のCPU使用率が高い原因を教えて");
+		ChatResponse response = mockChatService.generateReply("Web-1のCPU使用率が高い原因を教えて");
 
 		assertThat(response.reply()).isEqualTo("直近のCPU使用率上昇の要因を分析しました。バッチ処理プロセスの負荷が主な要因です。");
 		assertThat(response.components()).hasSize(2);
@@ -254,7 +255,7 @@ class MockChatServiceTest {
 
 	@Test
 	void memoryAlertCauseQuestionReturnsMemoryCauseAnalysis() {
-		ChatResponse response = mockChatService.generateResponse("DB Primaryのメモリ使用率が高い原因を教えて");
+		ChatResponse response = mockChatService.generateReply("DB Primaryのメモリ使用率が高い原因を教えて");
 
 		assertThat(response.reply()).isEqualTo("直近のメモリ使用率上昇の要因を分析しました。キャッシュ層のメモリ消費増加が主な要因です。");
 		assertThat(response.components()).hasSize(2);
@@ -270,7 +271,7 @@ class MockChatServiceTest {
 
 	@Test
 	void trafficAlertCauseQuestionReturnsTrafficCauseAnalysis() {
-		ChatResponse response = mockChatService.generateResponse("LB〜Web-1間のトラフィック使用率が高い原因を教えて");
+		ChatResponse response = mockChatService.generateReply("LB〜Web-1間のトラフィック使用率が高い原因を教えて");
 
 		assertThat(response.reply()).isEqualTo("直近のトラフィック増加の要因を分析しました。大容量ファイル転送による帯域占有が主な要因です。");
 		assertThat(response.components()).hasSize(2);
@@ -286,7 +287,7 @@ class MockChatServiceTest {
 
 	@Test
 	void closeAlertLabelReturnsAcknowledgementWithNoComponents() {
-		ChatResponse response = mockChatService.generateResponse("閉じる");
+		ChatResponse response = mockChatService.generateReply("閉じる");
 
 		assertThat(response.reply()).isEqualTo("承知しました。");
 		assertThat(response.components()).isEmpty();
