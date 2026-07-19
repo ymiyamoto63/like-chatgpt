@@ -6,6 +6,7 @@ import com.example.chatbackend.dto.component.ChoicesComponent;
 import com.example.chatbackend.dto.component.FaqListComponent;
 import com.example.chatbackend.dto.component.TableComponent;
 import com.example.chatbackend.dto.component.TrendChartComponent;
+import com.example.chatbackend.repository.FaqRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,7 +17,7 @@ import org.junit.jupiter.api.Test;
 
 class MockChatServiceTest {
 
-	private final MockChatService mockChatService = new MockChatService();
+	private final MockChatService mockChatService = new MockChatService(new FaqRepository());
 
 	@Test
 	void assigneeKeywordReturnsAssigneeScenario() {
