@@ -4,9 +4,9 @@
 
 ## 位置づけ
 
-- この応答JSONスキーマは、**将来LLMがそのまま出力する契約（フォーマット）**として設計されている。現時点ではLLMには接続しておらず、バックエンドのキーワードマッチによるモック実装（`MockChatService`）が本スキーマに従ったJSONを決定論的に生成して返している。
+- この応答JSONスキーマは、**将来LLMがそのまま出力する契約（フォーマット）**として設計されている。現時点ではLLMには接続しておらず、バックエンドのキーワードマッチによるモック実装（`KeywordMatchReplyGenerationAdapter`）が本スキーマに従ったJSONを決定論的に生成して返している。
 - 将来、モック実装をLLM呼び出しに置き換える際は、LLMの出力がこのスキーマに一致するように制御（プロンプト設計・出力パーサ等）すればよく、フロントエンドの描画層・検証層には変更が不要となることを意図している。
-- 本書に記載するサンプルJSONは、`backend/src/test/java/com/example/chatbackend/ChatControllerTest.java` が検証する実際のレスポンス、および実際に起動したバックエンドへ `curl` で問い合わせた結果と一字一句一致している（AC-8）。
+- 本書に記載するサンプルJSONは、`backend/src/test/java/com/example/chatbackend/adapter/in/web/ChatControllerTest.java` が検証する実際のレスポンス、および実際に起動したバックエンドへ `curl` で問い合わせた結果と一字一句一致している（AC-8）。
 
 ## トップレベル: `ChatResponse`
 

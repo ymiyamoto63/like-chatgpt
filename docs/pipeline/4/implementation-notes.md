@@ -120,3 +120,48 @@ design.md の Implementation steps 5〜9（suggest/monitoring のヘキサゴナ
 ### スコープ外（今回未実装）
 
 design.md の Implementation steps 7〜9（ArchUnit ルールテスト本体の追加、ドキュメント参照の追随、全体検証の README 手動確認）は本タスクの指示によりステップ5〜6のみに限定したため未実装。
+
+## step 7-8
+
+対象: `docs/pipeline/4/design.md` の Implementation steps 7〜8（ステップ1〜6は完了済み、ステップ9の全体検証・README手動確認は未実施）。
+
+### ステップ7: ArchUnit ルールテストの追加（FR-6, AC-2, AC-5）
+
+- 新規: `backend/src/test/java/com/example/chatbackend/architecture/ArchitectureTest.java`。`@AnalyzeClasses(packages = "com.example.chatbackend", importOptions = ImportOption.DoNotIncludeTests.class)` を指定し、design.md「ArchUnit 依存ルール」節の4ルールをそのまま実装。
+  1. `domainMustNotDependOnApplicationOrAdapter`（domain は application/adapter に依存しない）
+  2. `applicationMustNotDependOnAdapter`（application は adapter に依存しない）
+  3. `applicationServiceMustNotDependOnAdapter`（AC-5 のトレーサビリティ用の独立ルール）
+  4. `onlyAdapterAndConfigMayDependOnSpring`（domain/application から `org.springframework..` への依存禁止）
+
+**AC-2 の RED 確認（作業記録）**: `application/service/ChatService.java` に一時的に `import com.example.chatbackend.adapter.out.reply.KeywordMatchReplyGenerationAdapter;` を追加し、未使用フィールド `private final KeywordMatchReplyGenerationAdapter tempViolation = null;`（`@SuppressWarnings("unused")` 付与）を混入させた状態で `./mvnw test -Dtest=ArchitectureTest` を実行。結果:
+- `applicationMustNotDependOnAdapter` → **FAILURE**（`ChatService.tempViolation` が `adapter.out.reply.KeywordMatchReplyGenerationAdapter` 型を持つことを検出）
+- `applicationServiceMustNotDependOnAdapter` → **FAILURE**（同上。`application.service` サブパッケージ限定ルールでも同一違反を検出）
+- `domainMustNotDependOnApplicationOrAdapter` → 影響なし（`domain` 側の変更ではないため対象外、PASS のまま）
+- `onlyAdapterAndConfigMayDependOnSpring` → 影響なし（Spring への依存ではないため対象外、PASS のまま）
+
+（`Tests run: 4, Failures: 2` で BUILD FAILURE を確認）。ルール2・3が期待どおり違反を検出できることを確認した後、`ChatService.java` を `git diff` で差分ゼロ（コミット済み状態と完全一致）になるまで元に戻した。違反コードは最終状態に一切残していない。
+
+その後 `./mvnw test`（全件）を実行し、`ArchitectureTest` の4ルールすべて GREEN、既存49件と合わせて `Tests run: 53, Failures: 0, Errors: 0, Skipped: 0` で BUILD SUCCESS を確認。
+
+### ステップ8: ドキュメント参照の追随
+
+API仕様・JSONスキーマ・サンプル値は一切変更せず、クラス名・テストファイルパスの記載のみを新構成に更新した。
+
+- `docs/api/chat-response-schema.md`: `MockChatService` → `KeywordMatchReplyGenerationAdapter`、テストパス `backend/src/test/java/com/example/chatbackend/ChatControllerTest.java` → `backend/src/test/java/com/example/chatbackend/adapter/in/web/ChatControllerTest.java`
+- `docs/api/suggest-api.md`: `MockSuggestService` → `CannedPhraseSuggestionAdapter`
+- `docs/api/monitoring-response-schema.md`: `MonitoringMetricsService` → `RandomWalkMetricsGenerationAdapter`（2箇所）、`@Service` シングルトンBean → `@Component` シングルトンBean、テストパス `backend/src/test/java/com/example/chatbackend/MonitoringControllerTest.java` → `backend/src/test/java/com/example/chatbackend/adapter/in/web/MonitoringControllerTest.java`
+
+**確認**: `grep -rn "MockChatService\|MockSuggestService\|MonitoringMetricsService\|FaqRepository\b"` および旧パッケージパス（`controller/`・`service/`・`repository/`・`dto/`）参照を `docs/api/*.md`・`README.md` に対して実行し、いずれもゼロ件であることを確認した。README.md には元々これらのクラス名・旧パスへの言及が無かったため変更なし。
+
+### 検証結果
+
+- `cd backend && ./mvnw -q compile` → 成功（警告・エラーなし）
+- `cd backend && ./mvnw test` → `Tests run: 53, Failures: 0, Errors: 0, Skipped: 0` で BUILD SUCCESS（既存49件 + `ArchitectureTest` 4件）
+
+### 設計からの逸脱
+
+なし。API・JSONスキーマ・サンプル値は一切変更していない。
+
+### スコープ外（今回未実装）
+
+design.md の Implementation step 9（`./mvnw` による全体検証は本タスクでも実施済みだが、README記載手順でのフロントエンド疎通確認・代表シナリオ3種の手動確認（AC-4）は本タスクの指示によりステップ7〜8のみに限定したため未実施）。
