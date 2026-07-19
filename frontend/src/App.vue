@@ -2,9 +2,9 @@
 import { onMounted } from 'vue'
 import { useConversationStore } from './stores/conversationStore'
 import { useMonitoringStore } from './stores/monitoringStore'
-import ChatWindow from './components/ChatWindow.vue'
-import MonitoringView from './components/MonitoringView.vue'
-import Sidebar from './components/Sidebar.vue'
+import ChatWindow from './components/chat/ChatWindow.vue'
+import MonitoringView from './components/monitoring/MonitoringView.vue'
+import Sidebar from './components/layout/Sidebar.vue'
 
 const store = useConversationStore()
 const monitoringStore = useMonitoringStore()

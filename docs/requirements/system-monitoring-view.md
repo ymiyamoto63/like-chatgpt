@@ -37,7 +37,7 @@
 - **フロントエンド 状態管理**: 画面切替状態と、モニタリングデータ・ポーリング制御を持つ新規Piniaストア（既存 `conversationStore` は変更不要の見込み）
 - **フロントエンド APIクライアント**: 新APIのクライアント関数と応答検証（`chatApi.ts` と同じ検証方針の新ファイルまたは追記）
 - **バックエンド**: 新規コントローラ／サービス（トポロジー定義とメトリクス生成）。既存の `POST /api/chat` 系（`ChatController` / `MockChatService` / `UiComponent` スキーマ）には手を入れない
-- **ドキュメント**: 新APIの応答スキーマを文書化（`docs/chat-response-schema.md` とは別ファイルまたは別節）
+- **ドキュメント**: 新APIの応答スキーマを文書化（`docs/api/chat-response-schema.md` とは別ファイルまたは別節）
 
 ## 機能要件
 
@@ -76,7 +76,7 @@
 
 - フロントエンド: Vue 3（Composition API）＋ Pinia ＋ Tailwind CSS 4。ルーターは未導入のため、画面切替はコンポーネント条件描画＋ストア状態で行う（ルーター新規導入はしない）。
 - 描画ライブラリ・チャートライブラリは導入しない（既存の棒グラフ・トレンドグラフも自作であることに合わせる）。
-- バックエンド: Spring Boot（Java 21）。既存の `POST /api/chat` の契約（`docs/chat-response-schema.md`）には変更を加えない。
+- バックエンド: Spring Boot（Java 21）。既存の `POST /api/chat` の契約（`docs/api/chat-response-schema.md`）には変更を加えない。
 - 応答検証は `chatApi.ts` と同じ方針（必須フィールド検証・未知フィールド無視・不正時はクラッシュせずエラー表示）に従う。
 - モックデータはバックエンドで生成しフロントは描画に徹する、という本プロジェクトの既存方針に従う。
 
