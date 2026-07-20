@@ -115,3 +115,25 @@
 - 設計書どおり、backend側のステップ1〜3、frontend側のステップ4〜7（型定義・検証ロジック・描画コンポーネント・`MessageBubble.vue`統合）を実施した。手動確認（ステップ8）、`docs/api/chat-response-schema.md`更新（ステップ9）は本タスクのスコープ外として未着手。
 - 設計からの逸脱: ステップ6のドーナットチャート配色パレットの具体的な6色（`violet`/`emerald`/`orange`/`sky`/`rose`/`amber`）と、StatCardsViewのdelta色（emerald=up/rose=down）は設計書に色名の直接指定がなかったため、既存`TopologyDiagram.vue`・`TrendChartView.vue`の配色慣例に合わせて実装フェーズで決定した。それ以外（グリッドレイアウト・SVG構造・ゼロ除算対策・凡例内容・判定順序）は設計書の記述どおり。
 - フロントエンドに自動テストランナーが未導入のため、本ステップの検証は`npx vue-tsc -b`と`npm run build`のグリーン維持で完結させた（`pipeline-config.md`の`testing`節どおり）。手動確認シナリオ（AC-1, 2, 3, 5, 6, 7, 8, 11〜15）はステップ8のスコープとして未実施。
+
+## ステップ9: `docs/api/chat-response-schema.md` 更新（FR-8, AC-11）
+
+### 変更ファイル
+
+- 変更 `docs/api/chat-response-schema.md`
+  - 「`UiComponent`（判別共用体）」節冒頭の対応type列挙を5種類→7種類（`stat_cards`・`donut_chart`追加）に更新。
+  - `FaqListComponent`節の後に`StatCardsComponent`（`type`/`cards`のフィールド定義表＋ネスト`StatCard`（`label`/`value`/`delta`）のフィールド定義表＋符号判定仕様（`+`始まり=緑・上矢印／`-`始まり=赤・下矢印／それ以外=プレーン／省略=プレーン）＋サンプルJSON）と`DonutChartComponent`（`type`/`title`/`labels`/`values`のフィールド定義表＋サンプルJSON）の節を新設（設計書「API契約」節と一字一句同一の内容）。
+  - 「サンプルJSON（4シナリオ）」を「サンプルJSON（5シナリオ）」に変更し、シナリオD（非マッチ）の直前に「シナリオG: ミニダッシュボード応答」節を新設。トリガー説明（「サマリー」または「ダッシュボード」を含む。新規問い合わせフロー・アラートフロー非該当時）と全体サンプルJSON、モックデータの整合性に関する注記を記載。
+  - シナリオD節末尾の「判定順序」段落を、「カテゴリ」または「種別」判定の後・シナリオD判定の前に「含まなければ「サマリー」または「ダッシュボード」を含むか → シナリオG。」を挿入する形に更新（設計書の指定どおり、シナリオF側の「判定順序への影響」段落には手を加えていない）。
+  - 「フロントエンドの安全なフォールバック・将来拡張について」節の必須フィールド列挙に`stat_cards`（`cards`、1件以上、各要素`label`/`value`必須・`delta`任意）と`donut_chart`（`title`/`labels`/`values`、`bar_chart`と同条件）を追記し、「5値以外の場合」を「7値以外の場合」に更新。
+
+### サンプルJSONの実レスポンス確認（AC-11）
+
+- port 8080は既存の`java`プロセス（デバッガアタッチ待ち`suspend=y`のプロセス、pid 364530、他フェーズ/セッションが起動したものと推測）が保持しており、`curl`で疎通確認したところ「サマリー」を含むメッセージに対してもフォールバック応答（ダッシュボード機能を含まない旧ビルド相当）を返したため、この既存プロセスは検証に使用せず、そのまま停止せずに残した（呼び出し元への報告事項）。
+- 代わりに`cd backend && ./mvnw -q spring-boot:run -Dspring-boot.run.jvmArguments="-Dserver.port=8099"`で自分専用のインスタンスをバックグラウンド起動し、`curl -s -X POST http://localhost:8099/api/chat -H 'Content-Type: application/json' -d '{"message":"今月のサマリーを見せて"}'`および`{"message":"ダッシュボードを表示して"}`の2通りで実レスポンスを取得。両者とも同一の`components`配列（`stat_cards`→`donut_chart`→`trend_chart`の順、`stat_cards`の内容・`donut_chart`の`labels`/`values`）であることを確認し、`trend_chart`の日付ラベルを除く全フィールドをスキーマ文書のシナリオGサンプルに一字一句反映した。確認後、起動した自分のプロセス（port 8099）は`kill`で停止済み。port 8080の既存プロセスには一切手を加えていない。
+- `trend_chart`の`labels`は実行時点の日付に依存するため、実際の`curl`結果は`["7/7", ..., "7/20"]`（確認実施日2026-07-20基準）だったが、既存シナリオC節も過去確認時点の日付（`["7/2", ..., "7/15"]`）のまま据え置かれている既存ドキュメントの慣例に合わせ、シナリオGのサンプルも設計書「API契約」節に記載の`["7/2", ..., "7/15"]`をそのまま採用した（日付以外の`reply`・`stat_cards`・`donut_chart`・`trend_chart`の`title`/`values`/`average`は`curl`結果と完全一致）。
+
+### 検証
+
+- 上記`curl`確認（実レスポンスとの一致確認）。
+- ドキュメントのみの変更のため、backend/frontendのビルド・テストコマンドは実行不要（変更なし）。
