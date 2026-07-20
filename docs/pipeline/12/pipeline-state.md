@@ -7,6 +7,6 @@
 - [x] 1. requirements（承認済み・pre-refined input: docs/requirements/monitoring-node-history-chart.md）
 - [x] 2. design
 - [x] 3. implementation（step 5/5）
-- [ ] 4. testing（retry 0/3）
+- [x] 4. testing（retry 0/3）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish
