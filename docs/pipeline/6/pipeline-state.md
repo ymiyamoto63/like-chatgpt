@@ -9,4 +9,4 @@
 - [x] 3. implementation（step 4/4 完了）
 - [x] 4. testing（retry 0/3・自動検証全パス）
 - [x] 5. review（retry 0/2・指摘ゼロ）
-- [ ] 6. publish
+- [x] 6. publish
