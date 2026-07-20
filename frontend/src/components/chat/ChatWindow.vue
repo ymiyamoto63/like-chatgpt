@@ -40,7 +40,11 @@ function handleChoiceSelect(option: string) {
           v-for="message in messages"
           :key="message.id"
           :message="message"
-          :choices-enabled="message.id === latestMessageId && !store.isLoading"
+          :choices-enabled="
+            message.id === latestMessageId &&
+            !store.isLoading &&
+            !store.isMessageAnimating(message.id)
+          "
           @select="handleChoiceSelect"
         />
         <div

@@ -70,6 +70,9 @@ export const useConversationStore = defineStore('conversation', {
       conversations: persisted?.conversations ?? ([] as Conversation[]),
       activeConversationId: persisted?.activeConversationId ?? null,
       isLoading: false,
+      // 演出中（タイピング/フェードイン未完了）のメッセージ ID 一覧。
+      // localStorage への混入を避けるため main.ts の $subscribe では拾わない独立フィールド
+      animatingMessageIds: [] as string[],
     }
   },
   getters: {
@@ -82,10 +85,26 @@ export const useConversationStore = defineStore('conversation', {
     isInputLocked(): boolean {
       const messages = this.activeConversation?.messages ?? []
       const last = messages[messages.length - 1]
-      return !!last && last.role === 'assistant' && hasChoices(last)
+      return (
+        !!last &&
+        last.role === 'assistant' &&
+        (hasChoices(last) || this.animatingMessageIds.includes(last.id))
+      )
+    },
+    isMessageAnimating(state) {
+      return (id: string) => state.animatingMessageIds.includes(id)
     },
   },
   actions: {
+    markMessageAnimating(id: string) {
+      this.animatingMessageIds.push(id)
+    },
+    settleMessageAnimation(id: string) {
+      const index = this.animatingMessageIds.indexOf(id)
+      if (index !== -1) {
+        this.animatingMessageIds.splice(index, 1)
+      }
+    },
     createConversation() {
       const conversation: Conversation = {
         id: crypto.randomUUID(),
@@ -104,7 +123,11 @@ export const useConversationStore = defineStore('conversation', {
       if (index === -1) {
         return
       }
-      this.conversations.splice(index, 1)
+      const [removed] = this.conversations.splice(index, 1)
+      const removedIds = new Set(removed.messages.map((m) => m.id))
+      this.animatingMessageIds = this.animatingMessageIds.filter(
+        (messageId) => !removedIds.has(messageId),
+      )
       if (this.activeConversationId === id) {
         this.activeConversationId = this.conversations[0]?.id ?? null
       }
@@ -160,16 +183,21 @@ export const useConversationStore = defineStore('conversation', {
       this.isLoading = true
       try {
         const { reply, components } = await postChat(content)
-        conversation.messages.push(createMessage('assistant', reply, components))
+        const message = createMessage('assistant', reply, components)
+        conversation.messages.push(message)
+        this.markMessageAnimating(message.id)
       } catch (err) {
         if (err instanceof ChatResponseFormatError) {
-          conversation.messages.push(
-            createMessage('assistant', '応答を表示できませんでした'),
-          )
+          const message = createMessage('assistant', '応答を表示できませんでした')
+          conversation.messages.push(message)
+          this.markMessageAnimating(message.id)
         } else {
-          conversation.messages.push(
-            createMessage('assistant', 'エラー: 応答を取得できませんでした'),
+          const message = createMessage(
+            'assistant',
+            'エラー: 応答を取得できませんでした',
           )
+          conversation.messages.push(message)
+          this.markMessageAnimating(message.id)
         }
       } finally {
         this.isLoading = false
@@ -200,11 +228,11 @@ export const useConversationStore = defineStore('conversation', {
         return
       }
       conversation.title = replyText.slice(0, TITLE_MAX_LENGTH)
-      conversation.messages.push(
-        createMessage('assistant', replyText, [
-          { type: 'choices', options: choiceOptions },
-        ]),
-      )
+      const message = createMessage('assistant', replyText, [
+        { type: 'choices', options: choiceOptions },
+      ])
+      conversation.messages.push(message)
+      this.markMessageAnimating(message.id)
     },
   },
 })
