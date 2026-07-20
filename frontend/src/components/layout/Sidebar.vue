@@ -58,6 +58,11 @@ function handleNewInquiry() {
   store.startInquiry()
 }
 
+function handleDashboard() {
+  monitoringStore.showChat()
+  store.sendDashboardPrompt()
+}
+
 function handleShowMonitoring() {
   monitoringStore.showMonitoring()
 }
@@ -82,6 +87,14 @@ function handleShowMonitoring() {
         @click="handleNewInquiry"
       >
         新規問い合わせ
+      </button>
+      <button
+        type="button"
+        class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+        :disabled="store.isLoading"
+        @click="handleDashboard"
+      >
+        ダッシュボード
       </button>
       <button
         type="button"
