@@ -70,6 +70,36 @@ class ChatControllerTest {
 	}
 
 	@Test
+	void chatReturnsDashboardScenarioForSummaryKeyword() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"今月のサマリーを見せて\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.components[0].type", is("stat_cards")))
+				.andExpect(jsonPath("$.components[0].cards[0].delta", is("+12%")))
+				.andExpect(jsonPath("$.components[0].cards[3].delta").doesNotExist())
+				.andExpect(jsonPath("$.components[1].type", is("donut_chart")))
+				.andExpect(jsonPath("$.components[1].labels", hasSize(4)))
+				.andExpect(jsonPath("$.components[1].values", hasSize(4)))
+				.andExpect(jsonPath("$.components[2].type", is("trend_chart")));
+	}
+
+	@Test
+	void chatReturnsDashboardScenarioForDashboardKeyword() throws Exception {
+		mockMvc.perform(post("/api/chat")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"message\":\"ダッシュボードを表示して\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.components[0].type", is("stat_cards")))
+				.andExpect(jsonPath("$.components[0].cards[0].delta", is("+12%")))
+				.andExpect(jsonPath("$.components[0].cards[3].delta").doesNotExist())
+				.andExpect(jsonPath("$.components[1].type", is("donut_chart")))
+				.andExpect(jsonPath("$.components[1].labels", hasSize(4)))
+				.andExpect(jsonPath("$.components[1].values", hasSize(4)))
+				.andExpect(jsonPath("$.components[2].type", is("trend_chart")));
+	}
+
+	@Test
 	void chatReturnsGuidanceTextWithoutComponentsForNonMatchingMessage() throws Exception {
 		mockMvc.perform(post("/api/chat")
 				.contentType(MediaType.APPLICATION_JSON)

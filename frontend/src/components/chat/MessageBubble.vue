@@ -2,8 +2,10 @@
 import type {
   BarChartComponent,
   ChoicesComponent,
+  DonutChartComponent,
   FaqListComponent,
   Message,
+  StatCardsComponent,
   TableComponent,
   TrendChartComponent,
   UiComponentSpec,
@@ -13,6 +15,8 @@ import BarChartView from '../dynamic-ui/BarChartView.vue'
 import ChoicesView from '../dynamic-ui/ChoicesView.vue'
 import TrendChartView from '../dynamic-ui/TrendChartView.vue'
 import FaqListView from '../dynamic-ui/FaqListView.vue'
+import StatCardsView from '../dynamic-ui/StatCardsView.vue'
+import DonutChartView from '../dynamic-ui/DonutChartView.vue'
 
 defineProps<{
   message: Message
@@ -42,6 +46,14 @@ function isTrendChartComponent(component: UiComponentSpec): component is TrendCh
 function isFaqListComponent(component: UiComponentSpec): component is FaqListComponent {
   return component.type === 'faq_list'
 }
+
+function isStatCardsComponent(component: UiComponentSpec): component is StatCardsComponent {
+  return component.type === 'stat_cards'
+}
+
+function isDonutChartComponent(component: UiComponentSpec): component is DonutChartComponent {
+  return component.type === 'donut_chart'
+}
 </script>
 
 <template>
@@ -66,6 +78,8 @@ function isFaqListComponent(component: UiComponentSpec): component is FaqListCom
         <TableView v-if="isTableComponent(component)" :spec="component" />
         <BarChartView v-else-if="isBarChartComponent(component)" :spec="component" />
         <TrendChartView v-else-if="isTrendChartComponent(component)" :spec="component" />
+        <StatCardsView v-else-if="isStatCardsComponent(component)" :spec="component" />
+        <DonutChartView v-else-if="isDonutChartComponent(component)" :spec="component" />
         <ChoicesView
           v-else-if="isChoicesComponent(component)"
           :spec="component"

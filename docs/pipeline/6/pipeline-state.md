@@ -1,0 +1,12 @@
+# Pipeline State
+- Issue: #6
+- Branch: feature/6-dashboard-response
+- Base SHA: 813c5d936972b1489a40129ace2717fd4a9fb005
+- Mode: auto
+- Commands: backend: `cd backend && ./mvnw -q compile` / `cd backend && ./mvnw test` ・ frontend: `cd frontend && npx vue-tsc -b` / `cd frontend && npm run build`
+- [x] 1. requirements（承認済み）
+- [x] 2. design
+- [x] 3. implementation（step 4/4 完了）
+- [x] 4. testing（retry 0/3・自動検証全パス）
+- [x] 5. review（retry 0/2・指摘ゼロ）
+- [x] 6. publish

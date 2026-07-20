@@ -29,12 +29,32 @@ export interface FaqListComponent {
   titles: string[]
 }
 
+export interface StatCard {
+  label: string
+  value: string
+  delta?: string
+}
+
+export interface StatCardsComponent {
+  type: 'stat_cards'
+  cards: StatCard[]
+}
+
+export interface DonutChartComponent {
+  type: 'donut_chart'
+  title: string
+  labels: string[]
+  values: number[]
+}
+
 export type UiComponentSpec =
   | TableComponent
   | BarChartComponent
   | ChoicesComponent
   | TrendChartComponent
   | FaqListComponent
+  | StatCardsComponent
+  | DonutChartComponent
 
 export interface Message {
   id: string

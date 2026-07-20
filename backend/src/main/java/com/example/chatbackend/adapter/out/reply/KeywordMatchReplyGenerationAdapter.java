@@ -5,7 +5,10 @@ import com.example.chatbackend.application.port.out.ReplyGenerationPort;
 import com.example.chatbackend.domain.chat.ChatResponse;
 import com.example.chatbackend.domain.chat.component.BarChartComponent;
 import com.example.chatbackend.domain.chat.component.ChoicesComponent;
+import com.example.chatbackend.domain.chat.component.DonutChartComponent;
 import com.example.chatbackend.domain.chat.component.FaqListComponent;
+import com.example.chatbackend.domain.chat.component.StatCard;
+import com.example.chatbackend.domain.chat.component.StatCardsComponent;
 import com.example.chatbackend.domain.chat.component.TableComponent;
 import com.example.chatbackend.domain.chat.component.TrendChartComponent;
 import com.example.chatbackend.domain.faq.FaqEntry;
@@ -23,6 +26,11 @@ public class KeywordMatchReplyGenerationAdapter implements ReplyGenerationPort {
 	private static final String CATEGORY_KEYWORD = "カテゴリ";
 	private static final String TYPE_KEYWORD = "種別";
 	private static final String DAILY_KEYWORD = "日別";
+	// 「サマリー」「ダッシュボード」は既存キーワード・新規問い合わせ/アラートフローの定型文と
+	// 重複しないことをgrepで確認済み。将来これらの語を含む定型文が両フローに追加された場合は
+	// 再度の衝突確認が必要
+	private static final String SUMMARY_KEYWORD = "サマリー";
+	private static final String DASHBOARD_KEYWORD = "ダッシュボード";
 
 	private static final int DAILY_TREND_DAYS = 14;
 	private static final List<Double> DAILY_TREND_VALUES = List.of(
@@ -78,6 +86,9 @@ public class KeywordMatchReplyGenerationAdapter implements ReplyGenerationPort {
 		}
 		if (message.contains(CATEGORY_KEYWORD) || message.contains(TYPE_KEYWORD)) {
 			return categoryScenario();
+		}
+		if (message.contains(SUMMARY_KEYWORD) || message.contains(DASHBOARD_KEYWORD)) {
+			return dashboardScenario();
 		}
 		return fallbackScenario();
 	}
@@ -237,6 +248,13 @@ public class KeywordMatchReplyGenerationAdapter implements ReplyGenerationPort {
 	}
 
 	private ChatResponse dailyTrendScenario() {
+		TrendChartComponent trendChart = buildDailyTrendChart();
+		return new ChatResponse(
+				"直近" + DAILY_TREND_DAYS + "日間の日別問い合わせ件数をまとめました。平均は1日あたり約" + trendChart.average() + "件です。",
+				List.of(trendChart));
+	}
+
+	private TrendChartComponent buildDailyTrendChart() {
 		List<String> labels = new ArrayList<>();
 		LocalDate today = LocalDate.now();
 		for (int i = DAILY_TREND_DAYS - 1; i >= 0; i--) {
@@ -244,14 +262,27 @@ public class KeywordMatchReplyGenerationAdapter implements ReplyGenerationPort {
 		}
 		double average = DAILY_TREND_VALUES.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
 		double roundedAverage = Math.round(average * 10) / 10.0;
-		TrendChartComponent trendChart = new TrendChartComponent(
+		return new TrendChartComponent(
 				"日別問い合わせ件数（直近" + DAILY_TREND_DAYS + "日間）",
 				labels,
 				DAILY_TREND_VALUES,
 				roundedAverage);
+	}
+
+	private ChatResponse dashboardScenario() {
+		StatCardsComponent statCards = new StatCardsComponent(List.of(
+				new StatCard("新規問い合わせ件数", "142件", "+12%"),
+				new StatCard("平均初回応答時間", "3.2時間", "-8%"),
+				new StatCard("顧客満足度", "4.3/5.0", "±0pt"),
+				new StatCard("解決率", "92%", null)));
+		DonutChartComponent donutChart = new DonutChartComponent(
+				"カテゴリ別内訳",
+				List.of("請求", "技術", "アカウント", "その他"),
+				List.of(58.0, 44.0, 25.0, 15.0));
+		TrendChartComponent trendChart = buildDailyTrendChart();
 		return new ChatResponse(
-				"直近" + DAILY_TREND_DAYS + "日間の日別問い合わせ件数をまとめました。平均は1日あたり約" + roundedAverage + "件です。",
-				List.of(trendChart));
+				"今月のサマリーです。主要な指標とカテゴリ内訳、日別の推移をまとめました。",
+				List.of(statCards, donutChart, trendChart));
 	}
 
 	private ChatResponse fallbackScenario() {
