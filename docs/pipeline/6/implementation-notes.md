@@ -51,7 +51,35 @@
   - `ChatControllerTest`: 14テスト（既存12＋新規2）全パス。
   - `KeywordMatchReplyGenerationAdapterTest`（既存, 22テスト）・`ArchitectureTest`（既存, 4テスト）を含む全テストクラスが回帰なし。
 
+## ステップ4: frontend型定義追加（FR-1, FR-6）
+
+### 変更ファイル
+
+- 変更 `frontend/src/types/chat.ts`
+  - `StatCard`（`label: string; value: string; delta?: string`）、`StatCardsComponent`（`type: 'stat_cards'; cards: StatCard[]`）、`DonutChartComponent`（`type: 'donut_chart'; title: string; labels: string[]; values: number[]`）を、既存`FaqListComponent`直後に既存インタフェースと同じ1行フィールド列挙のスタイルで追加。
+  - `UiComponentSpec`判別共用体の末尾に`StatCardsComponent`/`DonutChartComponent`を追加。
+
+### 検証
+
+- `cd frontend && npx vue-tsc -b` グリーン。
+
+## ステップ5: frontend検証ロジック追加（FR-6）
+
+### 変更ファイル
+
+- 変更 `frontend/src/api/chatApi.ts`
+  - import追加: `DonutChartComponent`/`StatCard`/`StatCardsComponent`。
+  - `isValidStatCard`を新設: `label`/`value`が`string`であること、`delta`は`undefined`・`null`・`string`のいずれかであることを検証。
+  - `isValidStatCardsComponent`を新設: `cards`が1件以上の配列かつ全要素が`isValidStatCard`を満たすことを検証。
+  - `isValidDonutChartComponent`を新設: 既存`isValidBarChartComponent`と同型（`title`がstring、`labels`が1件以上のstring配列、`values`が`labels`と同数のfinite number配列）。
+  - `isValidUiComponentSpec`の`type`判別分岐に`'stat_cards'`/`'donut_chart'`を既存5分岐の末尾に追加。既存の「不正なら応答全体をエラーフォールバック（部分成功なし）」という方針・構造は変更していない。
+
+### 検証
+
+- `cd frontend && npx vue-tsc -b` グリーン。
+
 ## 逸脱・スコープ外の扱い
 
-- 設計書どおり、backend側のステップ1〜3のみを実施した。frontend側（ステップ4〜7）・手動確認（ステップ8）・`docs/api/chat-response-schema.md` 更新（ステップ9）は本タスクのスコープ外として未着手。
-- 設計からの逸脱はなし。`dailyTrendScenario()` の抽出は設計書「Risks / edge cases」節の指示（ロジック・定数・丸め処理を一切変更しない）を厳守し、既存テストの回帰なしで確認済み。
+- 設計書どおり、backend側のステップ1〜3、frontend側のステップ4〜5を実施した。フロントエンド描画コンポーネント（ステップ6: `StatCardsView.vue`/`DonutChartView.vue`新規作成）、`MessageBubble.vue`統合（ステップ7）、手動確認（ステップ8）、`docs/api/chat-response-schema.md`更新（ステップ9）は本タスクのスコープ外として未着手。
+- 設計からの逸脱はなし。`isValidStatCard`/`isValidStatCardsComponent`/`isValidDonutChartComponent`の検証仕様・型定義とも設計書「API契約」節・ステップ4/5の記述どおりに実装した。
+- フロントエンドに自動テストランナーが未導入のため、本ステップの検証は`npx vue-tsc -b`のみで完結させた（`npm run build`は描画コンポーネント未実装の現時点では対象外。ステップ7完了時に確認する設計）。

@@ -2,7 +2,10 @@ import { API_BASE_URL } from '../constants/api'
 import type {
   BarChartComponent,
   ChoicesComponent,
+  DonutChartComponent,
   FaqListComponent,
+  StatCard,
+  StatCardsComponent,
   TableComponent,
   TrendChartComponent,
   UiComponentSpec,
@@ -71,6 +74,36 @@ function isValidFaqListComponent(value: unknown): value is FaqListComponent {
   return isStringArray(titles) && titles.length > 0
 }
 
+function isValidStatCard(value: unknown): value is StatCard {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const { label, value: cardValue, delta } = value as Record<string, unknown>
+  if (typeof label !== 'string' || typeof cardValue !== 'string') {
+    return false
+  }
+  return delta === undefined || delta === null || typeof delta === 'string'
+}
+
+function isValidStatCardsComponent(value: unknown): value is StatCardsComponent {
+  const { cards } = value as Record<string, unknown>
+  return Array.isArray(cards) && cards.length > 0 && cards.every(isValidStatCard)
+}
+
+function isValidDonutChartComponent(value: unknown): value is DonutChartComponent {
+  const { title, labels, values } = value as Record<string, unknown>
+  if (typeof title !== 'string') {
+    return false
+  }
+  if (!isStringArray(labels) || labels.length === 0) {
+    return false
+  }
+  if (!Array.isArray(values) || values.length !== labels.length) {
+    return false
+  }
+  return values.every((v) => typeof v === 'number' && Number.isFinite(v))
+}
+
 function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   if (typeof value !== 'object' || value === null) {
     return false
@@ -90,6 +123,12 @@ function isValidUiComponentSpec(value: unknown): value is UiComponentSpec {
   }
   if (record.type === 'faq_list') {
     return isValidFaqListComponent(record)
+  }
+  if (record.type === 'stat_cards') {
+    return isValidStatCardsComponent(record)
+  }
+  if (record.type === 'donut_chart') {
+    return isValidDonutChartComponent(record)
   }
   return false
 }
