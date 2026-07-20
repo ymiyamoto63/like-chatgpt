@@ -78,8 +78,40 @@
 
 - `cd frontend && npx vue-tsc -b` グリーン。
 
+## ステップ6: frontend描画コンポーネント新規作成（FR-7）
+
+### 変更ファイル
+
+- 新規 `frontend/src/components/dynamic-ui/StatCardsView.vue`
+  - `props.spec.cards`を`grid grid-cols-2 sm:grid-cols-4 gap-2`でグリッド表示。各カードは`label`（zinc-500系の小見出し）・`value`（zinc-900系の強調表示）・`delta`行（該当時のみ）の3段構成で、既存`BarChartView`/`TableView`と同じzinc/violet基調の配色トーンに合わせた。
+  - `deltaTrend(delta: string | undefined | null): 'up' | 'down' | 'flat' | null`関数を実装: `undefined`/`null` → `null`、先頭`'+'` → `'up'`、先頭`'-'` → `'down'`、それ以外 → `'flat'`。`computed`の`cards`で各カードに`trend`を付与するかたちで利用（設計書の「computedで用意する」という記述を、`deltaTrend`自体は純粋関数、それを用いる導出データを`computed`にする形で解釈した）。
+  - `trend === 'up'`は`text-emerald-600 dark:text-emerald-400`＋`▲`、`'down'`は`text-rose-600 dark:text-rose-400`＋`▼`（既存`TopologyDiagram.vue`のemerald=正常/rose=危険という配色慣例を踏襲）、`'flat'`は`text-zinc-500 dark:text-zinc-400`で矢印なし、`trend`が`null`の場合は`v-if="card.trend"`によりdelta行自体を描画しない。`v-html`は不使用。長い`label`/`value`/`delta`文字列は`truncate`ではみ出しを防止。
+- 新規 `frontend/src/components/dynamic-ui/DonutChartView.vue`
+  - SVG `viewBox="0 0 100 100"`、中心`(50,50)`、半径`R=40`（`RADIUS`定数）、`stroke-width=16`（`STROKE_WIDTH`定数）。下地の薄グレーリング（`stroke-zinc-200 dark:stroke-zinc-700`）に続けて、`labels`の数だけ`<circle>`を重ね描画。`<g transform="rotate(-90 50 50)">`でグループ全体を回転させ12時起点にした。
+  - `total = values.reduce((sum, value) => sum + value, 0)`、`ratio = total > 0 ? value / total : 0`、`segmentLength = ratio * circumference`（`circumference = 2 * Math.PI * RADIUS`）、`stroke-dasharray="${segmentLength} ${circumference - segmentLength}"`、`stroke-dashoffset={-cumulativeLength}`を`computed`の`segments`で算出（三角関数を経由しないため`total === 0`でも`NaN`座標は発生せず、下地リングのみが表示される＝AC-8のゼロ除算対策）。
+  - 色は`PALETTE`（`violet`/`emerald`/`orange`/`sky`/`rose`/`amber`の6色、各`stroke-*-500 dark:stroke-*-400`とスウォッチ用`bg-*-500 dark:bg-*-400`の完全なクラス文字列リテラルをペアで保持）を`index % PALETTE.length`で循環使用。動的な文字列結合でクラス名を生成すると Tailwind の静的解析に拾われない懸念があるため、`TopologyDiagram.vue`の`LEVEL_STROKE_CLASS`と同様、配列要素として完全なクラス文字列を列挙する方式にした（設計書に直接の指定はないが、既存コンポーネントの慣例に合わせた実装判断）。
+  - 凡例はSVG横（`sm:flex-row`）または縦積み（モバイル幅）で、色スウォッチ（`<span class="rounded-full">`）＋`label`（`truncate`ではみ出し防止）＋比率（`Math.round(ratio * 100)}%`）を表示。パレット循環時の視認性低下・凡例はみ出し対策はいずれも設計書「Risks / edge cases」節の記述どおり、要件外の動的パレット生成等は行わずTailwindクラスでの最低限の防止に留めた。
+
+### 検証
+
+- `cd frontend && npx vue-tsc -b` グリーン。
+
+## ステップ7: `MessageBubble.vue`への描画分岐統合（FR-7）
+
+### 変更ファイル
+
+- 変更 `frontend/src/components/chat/MessageBubble.vue`
+  - `StatCardsComponent`/`DonutChartComponent`の型importと`StatCardsView`/`DonutChartView`のコンポーネントimportを追加。
+  - `isStatCardsComponent`/`isDonutChartComponent`を既存4関数（`isTableComponent`等）と同じ形式（`component.type === '...'`の型ガード）で`isFaqListComponent`の直後に追加。
+  - テンプレートの`v-if`/`v-else-if`チェーンに`<StatCardsView v-else-if="isStatCardsComponent(component)" :spec="component" />`・`<DonutChartView v-else-if="isDonutChartComponent(component)" :spec="component" />`を、設計書の推奨どおり`TrendChartView`分岐の直後（`ChoicesView`分岐の直前）に挿入。既存5分岐（`table`/`bar_chart`/`trend_chart`/`choices`/`faq_list`）の並び順・記述は変更していない。
+
+### 検証
+
+- `cd frontend && npx vue-tsc -b` グリーン。
+- `cd frontend && npm run build` グリーン（`vue-tsc -b && vite build`、`dist/`出力まで成功。AC-9）。
+
 ## 逸脱・スコープ外の扱い
 
-- 設計書どおり、backend側のステップ1〜3、frontend側のステップ4〜5を実施した。フロントエンド描画コンポーネント（ステップ6: `StatCardsView.vue`/`DonutChartView.vue`新規作成）、`MessageBubble.vue`統合（ステップ7）、手動確認（ステップ8）、`docs/api/chat-response-schema.md`更新（ステップ9）は本タスクのスコープ外として未着手。
-- 設計からの逸脱はなし。`isValidStatCard`/`isValidStatCardsComponent`/`isValidDonutChartComponent`の検証仕様・型定義とも設計書「API契約」節・ステップ4/5の記述どおりに実装した。
-- フロントエンドに自動テストランナーが未導入のため、本ステップの検証は`npx vue-tsc -b`のみで完結させた（`npm run build`は描画コンポーネント未実装の現時点では対象外。ステップ7完了時に確認する設計）。
+- 設計書どおり、backend側のステップ1〜3、frontend側のステップ4〜7（型定義・検証ロジック・描画コンポーネント・`MessageBubble.vue`統合）を実施した。手動確認（ステップ8）、`docs/api/chat-response-schema.md`更新（ステップ9）は本タスクのスコープ外として未着手。
+- 設計からの逸脱: ステップ6のドーナットチャート配色パレットの具体的な6色（`violet`/`emerald`/`orange`/`sky`/`rose`/`amber`）と、StatCardsViewのdelta色（emerald=up/rose=down）は設計書に色名の直接指定がなかったため、既存`TopologyDiagram.vue`・`TrendChartView.vue`の配色慣例に合わせて実装フェーズで決定した。それ以外（グリッドレイアウト・SVG構造・ゼロ除算対策・凡例内容・判定順序）は設計書の記述どおり。
+- フロントエンドに自動テストランナーが未導入のため、本ステップの検証は`npx vue-tsc -b`と`npm run build`のグリーン維持で完結させた（`pipeline-config.md`の`testing`節どおり）。手動確認シナリオ（AC-1, 2, 3, 5, 6, 7, 8, 11〜15）はステップ8のスコープとして未実施。
