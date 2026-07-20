@@ -5,8 +5,8 @@
 - Mode: auto
 - Commands: frontend 型検査 `cd frontend && npx vue-tsc -b` / frontend ビルド `cd frontend && npm run build` / backend テスト `cd backend && ./mvnw test`（今回 backend 変更なし）
 - [x] 1. requirements（承認済み）
-- [ ] 2. design
-- [ ] 3. implementation
+- [x] 2. design
+- [ ] 3. implementation（step 0/6）
 - [ ] 4. testing（retry 0/3）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish
