@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { POLL_INTERVAL_MS } from '../constants/monitoring'
+import { MAX_HISTORY_SAMPLES, POLL_INTERVAL_MS } from '../constants/monitoring'
 import {
   ALERT_DANGER_THRESHOLD,
   ALERT_WARNING_THRESHOLD,
@@ -7,7 +7,7 @@ import {
   type MonitoringAlert,
 } from '../constants/monitoringAlert'
 import { getMonitoringSnapshot } from '../api/monitoringApi'
-import type { MonitoringSnapshot } from '../types/monitoring'
+import type { MonitoringHistorySample, MonitoringSnapshot } from '../types/monitoring'
 
 export const useMonitoringStore = defineStore('monitoring', {
   state: () => ({
@@ -22,6 +22,8 @@ export const useMonitoringStore = defineStore('monitoring', {
     // 格下げして記録し、warningの再通知はしないが90%への再上昇時はdangerとして再通知する
     alertedTierByTargetId: new Map<string, AlertSeverity>(),
     pendingAlerts: [] as MonitoringAlert[],
+    nodeHistoryById: new Map<string, MonitoringHistorySample[]>(),
+    selectedNodeId: null as string | null,
   }),
   actions: {
     showMonitoring() {
@@ -29,6 +31,7 @@ export const useMonitoringStore = defineStore('monitoring', {
     },
     showChat() {
       this.activeScreen = 'chat'
+      this.selectedNodeId = null
     },
     startPolling() {
       if (this.pollTimerId !== null) {
@@ -54,6 +57,7 @@ export const useMonitoringStore = defineStore('monitoring', {
         this.snapshot = snapshot
         this.lastUpdatedAt = Date.now()
         this.hasError = false
+        this.recordHistorySample(snapshot)
         this.updateAlertState(snapshot)
       } catch {
         if (requestGeneration !== this.fetchGeneration) {
@@ -130,6 +134,23 @@ export const useMonitoringStore = defineStore('monitoring', {
       this.pendingAlerts = this.pendingAlerts.filter(
         (pending) => pending.targetId !== alert.targetId,
       )
+    },
+    recordHistorySample(snapshot: MonitoringSnapshot) {
+      const timestamp = Date.now()
+      for (const node of snapshot.nodes) {
+        const series = this.nodeHistoryById.get(node.id) ?? []
+        series.push({ timestamp, cpuPercent: node.cpuPercent, memoryPercent: node.memoryPercent })
+        if (series.length > MAX_HISTORY_SAMPLES) {
+          series.shift()
+        }
+        this.nodeHistoryById.set(node.id, series)
+      }
+    },
+    selectNode(nodeId: string) {
+      this.selectedNodeId = nodeId
+    },
+    clearSelectedNode() {
+      this.selectedNodeId = null
     },
   },
 })

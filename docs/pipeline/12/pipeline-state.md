@@ -1,0 +1,12 @@
+# Pipeline State
+- Issue: #12
+- Branch: feature/12-monitoring-node-history-chart
+- Base SHA: 8e5209c50e43cea3b6432ba543302c62be5b7a2f
+- Mode: auto
+- Commands: cd backend && ./mvnw -q compile / cd backend && ./mvnw test / cd frontend && npx vue-tsc -b / cd frontend && npm run build
+- [x] 1. requirements（承認済み・pre-refined input: docs/requirements/monitoring-node-history-chart.md）
+- [x] 2. design
+- [x] 3. implementation（step 5/5）
+- [x] 4. testing（retry 0/3）
+- [x] 5. review（retry 0/2、blocking指摘ゼロ）
+- [ ] 6. publish

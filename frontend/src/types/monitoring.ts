@@ -16,3 +16,9 @@ export interface MonitoringSnapshot {
   nodes: MonitoringNode[]
   edges: MonitoringEdge[]
 }
+
+export interface MonitoringHistorySample {
+  timestamp: number
+  cpuPercent: number
+  memoryPercent: number
+}
