@@ -8,5 +8,5 @@
 - [x] 2. design
 - [x] 3. implementation（step 5/5）
 - [x] 4. testing（retry 0/3）
-- [ ] 5. review（retry 0/2）
+- [x] 5. review（retry 0/2、blocking指摘ゼロ）
 - [ ] 6. publish
