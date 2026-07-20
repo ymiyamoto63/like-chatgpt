@@ -59,3 +59,32 @@
 
 - `cd frontend && npx vue-tsc -b` を実行し、エラーなく完了（出力なし）。
 - `git status --porcelain` で `frontend/src/stores/conversationStore.ts` のみが変更されていることを確認（`main.ts`・型定義・永続化ロジックへの変更なし）。
+
+## ステップ4-5: ビュー層統合
+
+### 変更ファイル
+
+- `frontend/src/components/chat/MessageBubble.vue`
+  - `useConversationStore`（`../../stores/conversationStore`）と `useTypewriterReveal`（`../../composables/useTypewriterReveal`）を import。
+  - `defineProps` の戻り値を `const props = defineProps<{...}>()` として捕捉（従来は捕捉せず、コンパイラのテンプレート自動バインディングのみに依存していたが、script 側で `props.message` を参照する必要があるため変更）。
+  - setup 実行時に一度だけ `const shouldAnimate = props.message.role === 'assistant' && store.isMessageAnimating(props.message.id)` を評価し、非リアクティブな `const` に固定。
+  - `shouldAnimate === true` の場合のみ `useTypewriterReveal({ text: props.message.content, hasComponents: (props.message.components?.length ?? 0) > 0, onSettled: () => store.settleMessageAnimation(props.message.id) })` を呼び出し、返り値の `displayedText`/`showComponents`/`componentsVisible`（いずれも `Ref`）をそのまま使用。
+  - `shouldAnimate === false` の場合は `ref(props.message.content)`／`ref(true)`／`ref(true)` を用意し、即時全体表示（復元メッセージ・ユーザーメッセージ共通経路）。
+  - テンプレート: `{{ message.content }}` を `{{ displayedText }}` に変更（`v-html` は使用せず `{{ }}` 補間のまま、FR-9 準拠）。`message.components` の `v-for` 全体を `<div v-if="showComponents" class="mt-3 transition-opacity duration-300" :class="componentsVisible ? 'opacity-100' : 'opacity-0'">` で包み、既存の個々の `<div class="mt-3 whitespace-normal">`（コンポーネント間の縦間隔調整用）はそのまま `v-for` 要素として温存し、ラッパーの内側にネストする形に整理した。
+- `frontend/src/components/chat/ChatWindow.vue`
+  - `MessageBubble` に渡す `choices-enabled` の算出式を `message.id === latestMessageId && !store.isLoading` から `message.id === latestMessageId && !store.isLoading && !store.isMessageAnimating(message.id)` に変更（設計書の式どおり）。
+
+### 設計からの逸脱
+
+- なし。設計書「実装ステップ」ステップ4・5、「新規モジュール」節のインターフェース、「データフロー」節（新規メッセージ到着／復元メッセージの両分岐）の記述どおりに実装した。
+- 補足（逸脱ではなく実装上の必然）: `defineProps` の戻り値を変数に捕捉するよう変更したのは、script 側のロジック（`shouldAnimate` 判定・composable への引数渡し）から `message` プロパティにアクセスする必要があったため。テンプレート側は従来どおり `message`／`choicesEnabled` を直接参照可能（Vue の `<script setup>` コンパイラは `defineProps` 呼び出しの戻り値を変数に代入したかどうかに関わらずテンプレートへバインディング情報を提供するため、テンプレートの記述は変更していない）。
+
+### 今回のスコープ外（未実施）
+
+- ステップ6「手動確認と最終ビルド確認」（AC-1〜AC-8 の目視確認）は本タスクの担当範囲外のため未実施。
+
+### 検証結果
+
+- `cd frontend && npx vue-tsc -b` を実行し、エラーなく完了（出力なし）。
+- `cd frontend && npm run build` を実行し、`vue-tsc -b && vite build` がエラーなく完了（`dist/` 出力を確認）。
+- `git status --porcelain` で `frontend/src/components/chat/ChatWindow.vue` と `frontend/src/components/chat/MessageBubble.vue` の2ファイルのみが変更されていることを確認。
