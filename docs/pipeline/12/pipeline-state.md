@@ -5,7 +5,7 @@
 - Mode: auto
 - Commands: cd backend && ./mvnw -q compile / cd backend && ./mvnw test / cd frontend && npx vue-tsc -b / cd frontend && npm run build
 - [x] 1. requirements（承認済み・pre-refined input: docs/requirements/monitoring-node-history-chart.md）
-- [ ] 2. design
+- [x] 2. design
 - [ ] 3. implementation（step 0/0）
 - [ ] 4. testing（retry 0/3）
 - [ ] 5. review（retry 0/2）
