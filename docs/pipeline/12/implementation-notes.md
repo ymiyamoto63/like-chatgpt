@@ -90,3 +90,43 @@
 - `cd frontend && npx vue-tsc -b` → エラーなし（成功）
 - `cd frontend && npm run build` → ビルド成功（`vue-tsc -b && vite build`、58 modules transformed、成功）
 - `git status --porcelain` → `frontend/src/components/monitoring/NodeHistoryModal.vue`の新規追加のみ。既存ファイルへの変更なし。
+
+## ステップ5: MonitoringView.vueの結線
+
+### 変更ファイル
+
+- `frontend/src/components/monitoring/MonitoringView.vue`:
+  - `import NodeHistoryModal from './NodeHistoryModal.vue'`を追加。
+  - computed追加: `selectedNode`（`store.selectedNodeId`と`store.snapshot`から選択中ノードを`find`で導出、該当なしは`null`）、`selectedNodeHistory`（`store.nodeHistoryById.get(store.selectedNodeId)`、未選択時は空配列）。
+  - 仮のno-op実装だった`handleNodeClick`を`store.selectNode(nodeId)`を呼ぶ実装に置き換え、`handleModalClose`（`store.clearSelectedNode()`）を新規追加。
+  - テンプレートに`<NodeHistoryModal v-if="selectedNode" :node="selectedNode" :history="selectedNodeHistory" @close="handleModalClose" />`を追加（`TopologyDiagram`の直後）。既存の`TopologyDiagram`の`@node-click="handleNodeClick"`配線・アラートバナー・エラーバナー・ポーリング（`onMounted`/`onUnmounted`）ロジックは無変更。
+
+### 設計からの逸脱
+
+なし。design.mdの「MonitoringView.vue設計」節の記述通りに実装。
+
+### スコープ外
+
+なし（design.mdの実装ステップは本ステップで全5ステップ完了）。
+
+### 検証結果
+
+- `cd frontend && npx vue-tsc -b` → エラーなし（成功）
+- `cd frontend && npm run build` → ビルド成功（`vue-tsc -b && vite build`、60 modules transformed、成功）
+- `npm run dev` → `VITE v7.3.6 ready`、エラーなしで起動を確認。ただし本セッションはブラウザ操作ツールを持たないため、ノードクリック→モーダル表示→チャート描画→3種の閉じる操作→チャット画面往復後の履歴継続、といった一連のUIフローのブラウザ上での目視確認は実施できていない。型チェック・ビルドは通過しており、コードレビュー上もdesign.mdの記述通りにデータフロー（`store.selectedNodeId`→`selectedNode`/`selectedNodeHistory`→`NodeHistoryModal`のprops）が型として矛盾なく繋がっていることを確認した。requirements.mdの「Test strategy」に記載の手動確認シナリオ1〜9は、ユーザー側で`docker compose up`または`mvn spring-boot:run` + `npm run dev`を起動し、ブラウザで実施することを推奨する。
+- `git diff --stat` → 変更は`frontend/src/components/monitoring/MonitoringView.vue`のみ（24行追加・2行削除）。design.mdで想定されていない意図しない変更は含まれていない。
+
+## 全ステップ完了サマリ
+
+design.md「実装ステップ」節の5ステップすべてが完了した。design.mdの「Files affected」に記載された全ファイルの変更/新規作成状況は以下の通り、すべて対応済み。
+
+| ファイル | 対応状況 |
+|---|---|
+| `frontend/src/types/monitoring.ts` | 変更済み（ステップ1: `MonitoringHistorySample`型追加） |
+| `frontend/src/constants/monitoring.ts` | 変更済み（ステップ1: `MAX_HISTORY_SAMPLES`定数追加） |
+| `frontend/src/stores/monitoringStore.ts` | 変更済み（ステップ2: `nodeHistoryById`/`selectedNodeId`state、`recordHistorySample`/`selectNode`/`clearSelectedNode`アクション、`showChat()`の選択解除追加） |
+| `frontend/src/components/monitoring/TopologyDiagram.vue` | 変更済み（ステップ3: `historyByNodeId` prop、`node-click` emit、スパークライン描画への置き換え） |
+| `frontend/src/components/monitoring/NodeHistoryModal.vue` | 新規作成済み（ステップ4） |
+| `frontend/src/components/monitoring/MonitoringView.vue` | 変更済み（ステップ3で仮配線、ステップ5で本結線完了） |
+
+バックエンド・`docs/api/*.md`は設計通り無変更。各ステップで`npx vue-tsc -b`・`npm run build`が通ることを確認済み。ブラウザでの手動確認（AC-1〜AC-8に対応する手動確認シナリオ1〜9）は本セッションでは実施できていないため、ユーザー側での最終確認を推奨する。

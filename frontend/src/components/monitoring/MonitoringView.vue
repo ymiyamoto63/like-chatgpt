@@ -10,9 +10,20 @@ import {
   type MonitoringAlert,
 } from '../../constants/monitoringAlert'
 import TopologyDiagram from './TopologyDiagram.vue'
+import NodeHistoryModal from './NodeHistoryModal.vue'
 
 const store = useMonitoringStore()
 const conversationStore = useConversationStore()
+
+const selectedNode = computed(() => {
+  if (store.selectedNodeId === null || !store.snapshot) {
+    return null
+  }
+  return store.snapshot.nodes.find((node) => node.id === store.selectedNodeId) ?? null
+})
+const selectedNodeHistory = computed(() =>
+  store.selectedNodeId !== null ? (store.nodeHistoryById.get(store.selectedNodeId) ?? []) : [],
+)
 
 const lastUpdatedLabel = computed(() => {
   if (store.lastUpdatedAt === null) {
@@ -42,8 +53,12 @@ function handleAlertBannerClick(alert: MonitoringAlert) {
   store.showChat()
 }
 
-function handleNodeClick(_nodeId: string) {
-  // TODO: モーダル表示の結線は後続ステップで実装する
+function handleNodeClick(nodeId: string) {
+  store.selectNode(nodeId)
+}
+
+function handleModalClose() {
+  store.clearSelectedNode()
 }
 
 onMounted(() => {
@@ -97,6 +112,13 @@ onUnmounted(() => {
       :snapshot="store.snapshot"
       :history-by-node-id="store.nodeHistoryById"
       @node-click="handleNodeClick"
+    />
+
+    <NodeHistoryModal
+      v-if="selectedNode"
+      :node="selectedNode"
+      :history="selectedNodeHistory"
+      @close="handleModalClose"
     />
   </div>
 </template>
