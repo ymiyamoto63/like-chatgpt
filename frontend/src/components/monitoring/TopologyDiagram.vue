@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MonitoringSnapshot } from '../../types/monitoring'
+import type { MonitoringHistorySample, MonitoringSnapshot } from '../../types/monitoring'
 import { getMonitoringLevel, type MonitoringLevel } from '../../constants/monitoring'
 import {
   NODE_WIDTH,
@@ -12,18 +12,15 @@ import {
 
 const props = defineProps<{
   snapshot: MonitoringSnapshot
+  historyByNodeId: Map<string, MonitoringHistorySample[]>
 }>()
+
+const emit = defineEmits<{ (e: 'node-click', nodeId: string): void }>()
 
 const LEVEL_STROKE_CLASS: Record<MonitoringLevel, string> = {
   normal: 'stroke-emerald-500 dark:stroke-emerald-400',
   warning: 'stroke-orange-500 dark:stroke-orange-400',
   danger: 'stroke-rose-500 dark:stroke-rose-400',
-}
-
-const LEVEL_FILL_CLASS: Record<MonitoringLevel, string> = {
-  normal: 'fill-emerald-500 dark:fill-emerald-400',
-  warning: 'fill-orange-500 dark:fill-orange-400',
-  danger: 'fill-rose-500 dark:fill-rose-400',
 }
 
 const LEVEL_TEXT_CLASS: Record<MonitoringLevel, string> = {
@@ -43,6 +40,7 @@ const nodes = computed(() =>
       return []
     }
     const worstLevel = getMonitoringLevel(Math.max(node.cpuPercent, node.memoryPercent))
+    const history = props.historyByNodeId.get(node.id)
     return [
       {
         id: node.id,
@@ -51,6 +49,8 @@ const nodes = computed(() =>
         memoryPercent: node.memoryPercent,
         cpuLevel: getMonitoringLevel(node.cpuPercent),
         memoryLevel: getMonitoringLevel(node.memoryPercent),
+        cpuSparklinePoints: sparklinePoints(history, 'cpuPercent'),
+        memorySparklinePoints: sparklinePoints(history, 'memoryPercent'),
         x: position.x,
         y: position.y,
         centerX: position.x + NODE_WIDTH / 2,
@@ -94,12 +94,30 @@ const edges = computed(() =>
   }),
 )
 
-function gaugeFillClass(level: MonitoringLevel): string {
-  return LEVEL_FILL_CLASS[level]
+function valueToY(value: number): number {
+  const clamped = Math.min(100, Math.max(0, value))
+  return GAUGE_HEIGHT - (clamped / 100) * GAUGE_HEIGHT
 }
 
-function gaugeWidth(percent: number): number {
-  return (Math.min(100, Math.max(0, percent)) / 100) * GAUGE_WIDTH
+function sparklinePoints(
+  history: MonitoringHistorySample[] | undefined,
+  metric: 'cpuPercent' | 'memoryPercent',
+): string {
+  const samples = history ?? []
+  if (samples.length === 0) {
+    return ''
+  }
+  if (samples.length === 1) {
+    const y = valueToY(samples[0][metric])
+    return `0,${y} ${GAUGE_WIDTH},${y}`
+  }
+  return samples
+    .map((sample, index) => {
+      const x = (index / (samples.length - 1)) * GAUGE_WIDTH
+      const y = valueToY(sample[metric])
+      return `${x},${y}`
+    })
+    .join(' ')
 }
 </script>
 
@@ -139,7 +157,7 @@ function gaugeWidth(percent: number): number {
       </g>
     </g>
     <g>
-      <g v-for="node in nodes" :key="node.id">
+      <g v-for="node in nodes" :key="node.id" class="cursor-pointer" @click="emit('node-click', node.id)">
         <rect
           :x="node.x"
           :y="node.y"
@@ -170,14 +188,16 @@ function gaugeWidth(percent: number): number {
           rx="3"
           class="fill-zinc-200 dark:fill-zinc-700"
         />
-        <rect
-          :x="node.x + GAUGE_MARGIN"
-          :y="node.y + 38"
-          :width="gaugeWidth(node.cpuPercent)"
-          :height="GAUGE_HEIGHT"
-          rx="3"
-          :class="gaugeFillClass(node.cpuLevel)"
-        />
+        <g :transform="`translate(${node.x + GAUGE_MARGIN}, ${node.y + 38})`">
+          <polyline
+            :points="node.cpuSparklinePoints"
+            fill="none"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            :class="LEVEL_STROKE_CLASS[node.cpuLevel]"
+          />
+        </g>
         <text
           :x="node.x + NODE_WIDTH - GAUGE_MARGIN"
           :y="node.y + 34"
@@ -198,14 +218,16 @@ function gaugeWidth(percent: number): number {
           rx="3"
           class="fill-zinc-200 dark:fill-zinc-700"
         />
-        <rect
-          :x="node.x + GAUGE_MARGIN"
-          :y="node.y + 60"
-          :width="gaugeWidth(node.memoryPercent)"
-          :height="GAUGE_HEIGHT"
-          rx="3"
-          :class="gaugeFillClass(node.memoryLevel)"
-        />
+        <g :transform="`translate(${node.x + GAUGE_MARGIN}, ${node.y + 60})`">
+          <polyline
+            :points="node.memorySparklinePoints"
+            fill="none"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            :class="LEVEL_STROKE_CLASS[node.memoryLevel]"
+          />
+        </g>
         <text
           :x="node.x + NODE_WIDTH - GAUGE_MARGIN"
           :y="node.y + 56"

@@ -42,6 +42,10 @@ function handleAlertBannerClick(alert: MonitoringAlert) {
   store.showChat()
 }
 
+function handleNodeClick(_nodeId: string) {
+  // TODO: モーダル表示の結線は後続ステップで実装する
+}
+
 onMounted(() => {
   store.startPolling()
 })
@@ -88,6 +92,11 @@ onUnmounted(() => {
       データを取得できませんでした
     </div>
 
-    <TopologyDiagram v-if="store.snapshot" :snapshot="store.snapshot" />
+    <TopologyDiagram
+      v-if="store.snapshot"
+      :snapshot="store.snapshot"
+      :history-by-node-id="store.nodeHistoryById"
+      @node-click="handleNodeClick"
+    />
   </div>
 </template>
