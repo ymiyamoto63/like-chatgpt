@@ -9,4 +9,4 @@
 - [x] 3. implementation（step 5/5 完了）
 - [x] 4. testing（retry 0/3、green）
 - [x] 5. review（retry 0/2、blocking指摘なし）
-- [ ] 6. publish
+- [x] 6. publish
