@@ -6,7 +6,7 @@
 - Commands: backend: `cd backend && ./mvnw -q compile` / `cd backend && ./mvnw test` ・ frontend: `cd frontend && npx vue-tsc -b` / `cd frontend && npm run build`
 - [x] 1. requirements（承認済み）
 - [x] 2. design
-- [ ] 3. implementation（step 3/4 frontend描画 完了）
-- [ ] 4. testing（retry 0/3）
+- [x] 3. implementation（step 4/4 完了）
+- [x] 4. testing（retry 0/3・自動検証全パス）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish
