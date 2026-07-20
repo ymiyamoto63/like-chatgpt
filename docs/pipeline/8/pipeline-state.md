@@ -7,6 +7,6 @@
 - [x] 1. requirements（承認済み）
 - [x] 2. design
 - [x] 3. implementation（step 1/1 完了）
-- [ ] 4. testing（retry 0/3）
+- [x] 4. testing（retry 0/3・自動検証全パス）
 - [ ] 5. review（retry 0/2）
 - [ ] 6. publish
