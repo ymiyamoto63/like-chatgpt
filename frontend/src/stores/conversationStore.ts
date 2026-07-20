@@ -7,6 +7,7 @@ import type { Conversation, Message, UiComponentSpec } from '../types/chat'
 const TITLE_MAX_LENGTH = 20
 
 export const INQUIRY_TRIGGER = '新規問い合わせ'
+export const DASHBOARD_TRIGGER = 'ダッシュボードを表示して'
 const CATEGORY_ANSWER_PATTERN = /^カテゴリ: (請求|技術|アカウント|その他)$/
 const URGENCY_ANSWER_PATTERN = /^緊急度: (高|中|低)$/
 const INQUIRY_SUMMARY_PATTERN =
@@ -183,6 +184,12 @@ export const useConversationStore = defineStore('conversation', {
     async startInquiry() {
       this.createConversation()
       await this.sendMessage(INQUIRY_TRIGGER)
+    },
+    async sendDashboardPrompt() {
+      // createConversation() は同期処理のみで activeConversationId を確定させるため、
+      // 直後に呼ぶ sendMessage() は必ずこの新規会話に対して送信される（AC-3）。
+      this.createConversation()
+      await this.sendMessage(DASHBOARD_TRIGGER)
     },
     // モニタリング画面の異常検知アラートをきっかけに、バックエンド通信なしで
     // アシスタント発言（アラート文＋選択肢）を新規会話へ直接追加する
