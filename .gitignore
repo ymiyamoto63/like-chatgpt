@@ -1,0 +1,2 @@
+# quality-gate に送る計測結果の出力先（CI が生成する）
+reports/

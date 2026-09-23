@@ -1,0 +1,79 @@
+# like-chatgpt の品質ゲート設定（quality-gate が判定に使う合格ライン）
+# 仕様: https://github.com/ymiyamoto63/quality-gate/blob/main/docs/initial/02-metrics-spec.md
+# CI（.github/workflows/quality-gate.yml）がこのファイルを成果物として送信し、
+# quality-gate は計測したコミットのこのファイルで判定する。
+version: 1
+enforcement: report-only          # report-only | check-run | blocking
+on_missing_report: fail           # fail | warn
+
+execution:
+  # CI がスキップを申告できる指標。ここに無い指標のスキップ申告は ERROR になる
+  skippable_metrics: [mutation_score]
+  full_measurement_interval_days: 7
+  # GitHub ホストランナーで計測した性能値は参考値（REFERENCE）とし、判定に用いない
+  reference_only_environments: [github-hosted]
+
+components:
+  - name: backend
+    language: java
+    paths: ["backend/**"]
+  - name: frontend
+    language: typescript
+    paths: ["frontend/**"]
+
+# 除外パターンは「各ツールが報告するパスの形」に合わせて書く。
+# JaCoCo はパッケージ相対（com/example/chatbackend/...）、lcov はコンポーネント相対
+# （src/...）のパスを出すため、リポジトリ相対（backend/...）では一致しない。
+exclusions:
+  - "**/ChatBackendApplication.java"
+  - "**/main.ts"
+  - "**/*.d.ts"
+  - "**/*.config.ts"
+
+metrics:
+  # M-01: backend は JaCoCo（jacoco-xml）、frontend は Vitest v8（lcov）
+  branch_coverage:
+    enabled: true
+    threshold: 75
+    scope: overall
+    per_component: true
+    diff_threshold: 80            # 変更行のカバレッジ（WARN 判定）
+  # M-02: PIT（backend のみ。JVM 専用のため）
+  mutation_score:
+    enabled: true
+    threshold: 60
+    scope: all
+    components: [backend]
+  # M-03〜05: 性能試験（k6 シナリオと専有の計測環境が未整備のため無効）
+  performance:
+    enabled: false
+  # M-06: Trivy（SARIF）
+  vulnerabilities:
+    enabled: true
+    max_critical: 0
+    max_high: 0
+    max_medium: null
+  # M-07: PMD（backend。pmd-ruleset.xml で全メソッドの CC を出力）
+  cyclomatic_complexity:
+    enabled: true
+    max_complexity: 15
+    scope: new_and_modified
+    warn_from: 11
+  # M-08: API を MockMvc で検証するテスト（*ControllerTest）の JUnit XML
+  # M-09: merge-base の api/openapi.yml との oasdiff
+  api_contract:
+    enabled: true
+    min_success_rate: 100
+    min_test_count: 1
+    breaking_changes: 0
+  # M-10: Playwright + axe-core（frontend/e2e/a11y.spec.ts）
+  accessibility:
+    enabled: true
+    standard: wcag22aa
+    max_critical: 0
+    # ここに書いた画面が検査結果に無ければ M-10 は ERROR になる
+    pages:
+      - "/"
+
+notifications:
+  on: transition_to_fail
