@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: like-chatgpt API
+  version: v1
+servers:
+- url: /
+  description: 同一オリジン
+paths:
+  /api/suggest:
+    post:
+      tags:
+      - suggest-controller
+      operationId: suggest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SuggestResponse"
+  /api/chat:
+    post:
+      tags:
+      - chat-controller
+      operationId: chat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+  /api/monitoring/snapshot:
+    get:
+      tags:
+      - monitoring-controller
+      operationId: snapshot
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/MonitoringSnapshot"
+components:
+  schemas:
+    SuggestRequest:
+      type: object
+      properties:
+        text:
+          type: string
+    SuggestResponse:
+      type: object
+      properties:
+        completion:
+          type: string
+    ChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+      required:
+      - message
+    BarChartComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          title:
+            type: string
+          labels:
+            type: array
+            items:
+              type: string
+          values:
+            type: array
+            items:
+              type: number
+              format: double
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+        components:
+          type: array
+          items:
+            oneOf:
+            - $ref: "#/components/schemas/BarChartComponent"
+            - $ref: "#/components/schemas/ChoicesComponent"
+            - $ref: "#/components/schemas/DonutChartComponent"
+            - $ref: "#/components/schemas/FaqListComponent"
+            - $ref: "#/components/schemas/StatCardsComponent"
+            - $ref: "#/components/schemas/TableComponent"
+            - $ref: "#/components/schemas/TrendChartComponent"
+    ChoicesComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          options:
+            type: array
+            items:
+              type: string
+    DonutChartComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          title:
+            type: string
+          labels:
+            type: array
+            items:
+              type: string
+          values:
+            type: array
+            items:
+              type: number
+              format: double
+    FaqListComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          titles:
+            type: array
+            items:
+              type: string
+    StatCard:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        delta:
+          type: string
+    StatCardsComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          cards:
+            type: array
+            items:
+              $ref: "#/components/schemas/StatCard"
+    TableComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          columns:
+            type: array
+            items:
+              type: string
+          rows:
+            type: array
+            items:
+              type: array
+              items:
+                type: string
+    TrendChartComponent:
+      allOf:
+      - $ref: "#/components/schemas/UiComponent"
+      - type: object
+        properties:
+          title:
+            type: string
+          labels:
+            type: array
+            items:
+              type: string
+          values:
+            type: array
+            items:
+              type: number
+              format: double
+          average:
+            type: number
+            format: double
+    UiComponent:
+      discriminator:
+        propertyName: type
+      properties:
+        type:
+          type: string
+      required:
+      - type
+    MonitoringEdge:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceId:
+          type: string
+        targetId:
+          type: string
+        bandwidthPercent:
+          type: number
+          format: double
+    MonitoringNode:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        cpuPercent:
+          type: number
+          format: double
+        memoryPercent:
+          type: number
+          format: double
+    MonitoringSnapshot:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonitoringNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonitoringEdge"
